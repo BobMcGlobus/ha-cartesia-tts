@@ -1,0 +1,13 @@
+{
+  "domain": "cartesia_tts",
+  "name": "Cartesia Sonic TTS",
+  "codeowners": ["@BobMcGlobus"],
+  "config_flow": true,
+  "documentation": "https://github.com/BobMcGlobus/ha-cartesia-tts",
+  "issue_tracker": "https://github.com/BobMcGlobus/ha-cartesia-tts/issues",
+  "integration_type": "service",
+  "iot_class": "cloud_polling",
+  "requirements": [],
+  "single_config_entry": true,
+  "version": "0.1.0"
+}

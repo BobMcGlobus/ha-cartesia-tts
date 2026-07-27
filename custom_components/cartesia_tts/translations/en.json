@@ -1,0 +1,96 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Cartesia Sonic TTS",
+        "description": "Enter your Cartesia API key. You can create one at https://play.cartesia.ai/keys.",
+        "data": {
+          "api_key": "API key"
+        },
+        "data_description": {
+          "api_key": "The key is validated by loading your Cartesia voice list."
+        }
+      },
+      "model": {
+        "title": "Model and language",
+        "description": "The language list comes from the voices your Cartesia account can access.",
+        "data": {
+          "model": "Model",
+          "language": "Default language",
+          "streaming": "Stream audio while it is generated"
+        },
+        "data_description": {
+          "model": "sonic-3.5 is the recommended default. Speed and emotion only work on sonic-3.5 and sonic-3.",
+          "streaming": "Lowers the delay before Assist starts speaking. Turn this off if your media player cannot play a streamed WAV."
+        }
+      },
+      "voice": {
+        "title": "Default voice",
+        "description": "These are the Cartesia voices for {language}. Each assistant can still pick its own voice later.",
+        "data": {
+          "voice": "Default voice",
+          "speed": "Speed",
+          "emotion": "Emotion"
+        },
+        "data_description": {
+          "speed": "1.0 is the natural pace. Cartesia treats this as guidance, not an exact factor.",
+          "emotion": "Optional. The first six entries are the ones Cartesia considers most reliable."
+        }
+      },
+      "reauth_confirm": {
+        "title": "Re-authenticate Cartesia",
+        "description": "Your Cartesia API key was rejected. Enter a valid key to continue.",
+        "data": {
+          "api_key": "API key"
+        }
+      },
+      "reconfigure": {
+        "title": "Reconfigure Cartesia Sonic TTS",
+        "description": "Confirm or replace the API key, then review model, language and voice.",
+        "data": {
+          "api_key": "API key"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect to Cartesia.",
+      "invalid_auth": "Invalid API key.",
+      "unknown": "Unexpected error."
+    },
+    "abort": {
+      "already_configured": "Cartesia Sonic TTS is already configured.",
+      "single_instance_allowed": "Only one Cartesia Sonic TTS entry is supported.",
+      "reauth_successful": "Re-authentication was successful.",
+      "reconfigure_successful": "Reconfiguration was successful."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Model and language",
+        "data": {
+          "model": "Model",
+          "language": "Default language",
+          "streaming": "Stream audio while it is generated"
+        },
+        "data_description": {
+          "model": "Speed and emotion only work on sonic-3.5 and sonic-3.",
+          "streaming": "Lowers the delay before Assist starts speaking. Turn this off if your media player cannot play a streamed WAV."
+        }
+      },
+      "voice": {
+        "title": "Default voice",
+        "description": "These are the Cartesia voices for {language}.",
+        "data": {
+          "voice": "Default voice",
+          "speed": "Speed",
+          "emotion": "Emotion"
+        },
+        "data_description": {
+          "speed": "1.0 is the natural pace.",
+          "emotion": "Optional. The first six entries are the ones Cartesia considers most reliable."
+        }
+      }
+    }
+  }
+}

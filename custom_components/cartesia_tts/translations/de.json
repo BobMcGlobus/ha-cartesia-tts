@@ -1,0 +1,96 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Cartesia Sonic TTS",
+        "description": "Gib deinen Cartesia-API-Key ein. Erstellen kannst du ihn unter https://play.cartesia.ai/keys.",
+        "data": {
+          "api_key": "API-Key"
+        },
+        "data_description": {
+          "api_key": "Der Key wird geprüft, indem deine Cartesia-Stimmenliste geladen wird."
+        }
+      },
+      "model": {
+        "title": "Modell und Sprache",
+        "description": "Die Sprachliste stammt aus den Stimmen, auf die dein Cartesia-Konto Zugriff hat.",
+        "data": {
+          "model": "Modell",
+          "language": "Standardsprache",
+          "streaming": "Audio schon während der Erzeugung streamen"
+        },
+        "data_description": {
+          "model": "sonic-3.5 ist die empfohlene Voreinstellung. Tempo und Emotion wirken nur bei sonic-3.5 und sonic-3.",
+          "streaming": "Verkürzt die Wartezeit, bis Assist zu sprechen beginnt. Ausschalten, falls dein Media-Player kein gestreamtes WAV abspielen kann."
+        }
+      },
+      "voice": {
+        "title": "Standardstimme",
+        "description": "Das sind die Cartesia-Stimmen für {language}. Jeder Assistent kann später trotzdem eine eigene Stimme wählen.",
+        "data": {
+          "voice": "Standardstimme",
+          "speed": "Tempo",
+          "emotion": "Emotion"
+        },
+        "data_description": {
+          "speed": "1.0 ist das natürliche Tempo. Cartesia versteht den Wert als Richtwert, nicht als exakten Faktor.",
+          "emotion": "Optional. Die ersten sechs Einträge gelten bei Cartesia als am zuverlässigsten."
+        }
+      },
+      "reauth_confirm": {
+        "title": "Cartesia neu authentifizieren",
+        "description": "Dein Cartesia-API-Key wurde abgelehnt. Gib einen gültigen Key ein.",
+        "data": {
+          "api_key": "API-Key"
+        }
+      },
+      "reconfigure": {
+        "title": "Cartesia Sonic TTS neu konfigurieren",
+        "description": "API-Key bestätigen oder ersetzen, danach Modell, Sprache und Stimme prüfen.",
+        "data": {
+          "api_key": "API-Key"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Verbindung zu Cartesia fehlgeschlagen.",
+      "invalid_auth": "Ungültiger API-Key.",
+      "unknown": "Unerwarteter Fehler."
+    },
+    "abort": {
+      "already_configured": "Cartesia Sonic TTS ist bereits eingerichtet.",
+      "single_instance_allowed": "Es wird nur ein Cartesia-Sonic-TTS-Eintrag unterstützt.",
+      "reauth_successful": "Die erneute Authentifizierung war erfolgreich.",
+      "reconfigure_successful": "Die Neukonfiguration war erfolgreich."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Modell und Sprache",
+        "data": {
+          "model": "Modell",
+          "language": "Standardsprache",
+          "streaming": "Audio schon während der Erzeugung streamen"
+        },
+        "data_description": {
+          "model": "Tempo und Emotion wirken nur bei sonic-3.5 und sonic-3.",
+          "streaming": "Verkürzt die Wartezeit, bis Assist zu sprechen beginnt. Ausschalten, falls dein Media-Player kein gestreamtes WAV abspielen kann."
+        }
+      },
+      "voice": {
+        "title": "Standardstimme",
+        "description": "Das sind die Cartesia-Stimmen für {language}.",
+        "data": {
+          "voice": "Standardstimme",
+          "speed": "Tempo",
+          "emotion": "Emotion"
+        },
+        "data_description": {
+          "speed": "1.0 ist das natürliche Tempo.",
+          "emotion": "Optional. Die ersten sechs Einträge gelten bei Cartesia als am zuverlässigsten."
+        }
+      }
+    }
+  }
+}
