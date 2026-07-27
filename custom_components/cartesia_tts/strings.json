@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "Cartesia Sonic TTS",
-        "description": "Enter your Cartesia API key. You can create one at https://play.cartesia.ai/keys.",
+        "description": "Enter your Cartesia API key. You can create one at [play.cartesia.ai/keys]({keys_url}).",
         "data": {
           "api_key": "API key"
         },

@@ -53,6 +53,8 @@ from .tts import derive_languages
 
 _LOGGER = logging.getLogger(__name__)
 
+API_KEYS_URL = "https://play.cartesia.ai/keys"
+
 API_KEY_SELECTOR = TextSelector(TextSelectorConfig(type=TextSelectorType.PASSWORD))
 MODEL_SELECTOR = SelectSelector(
     SelectSelectorConfig(options=MODELS, mode=SelectSelectorMode.DROPDOWN)
@@ -182,6 +184,8 @@ class CartesiaConfigFlow(ConfigFlow, domain=DOMAIN):
             step_id="user",
             data_schema=vol.Schema({vol.Required(CONF_API_KEY): API_KEY_SELECTOR}),
             errors=errors,
+            # hassfest rejects literal URLs in strings.json.
+            description_placeholders={"keys_url": API_KEYS_URL},
         )
 
     async def async_step_model(
