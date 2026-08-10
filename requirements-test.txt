@@ -1,3 +1,8 @@
 # Boots a real Home Assistant, so it needs Python 3.14.2+ (HA 2026.7).
 # The tests under tests/unit need only aiohttp and pytest.
 pytest-homeassistant-custom-component
+
+# Requirement of Home Assistant's own tts integration. Custom components do not
+# inherit the requirements of the integrations they build on, so it is listed
+# here explicitly (homeassistant/components/tts/manifest.json).
+mutagen==1.47.0
