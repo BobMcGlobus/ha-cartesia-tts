@@ -2,7 +2,9 @@
 # The tests under tests/unit need only aiohttp and pytest.
 pytest-homeassistant-custom-component
 
-# Requirement of Home Assistant's own tts integration. Custom components do not
-# inherit the requirements of the integrations they build on, so it is listed
-# here explicitly (homeassistant/components/tts/manifest.json).
+# Requirements of the Home Assistant integrations this component builds on.
+# A custom component does not inherit them, so they are listed explicitly:
+#   tts    -> mutagen        (homeassistant/components/tts/manifest.json)
+#   ffmpeg -> ha-ffmpeg      (a dependency of tts)
 mutagen==1.47.0
+ha-ffmpeg==3.2.2
