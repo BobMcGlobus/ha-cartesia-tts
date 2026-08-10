@@ -2,7 +2,7 @@
 
 Custom integration that connects Home Assistant to the [Cartesia](https://cartesia.ai) Sonic
 text-to-speech API — fast, natural speech for your Assist pipeline, with a native voice picker and
-per-call control over voice, speed and emotion.
+per-call control over voice, speed, emotion and volume.
 
 - **Repo:** `ha-cartesia-tts` · **Integration domain:** `cartesia_tts`
 - **Requires:** Home Assistant **2026.7.0** or newer
@@ -15,7 +15,8 @@ per-call control over voice, speed and emotion.
 |---|---|
 | Voice picker | Every Cartesia voice for the selected language, per assistant, from a single entity |
 | Languages | Derived at runtime from the voices your account can access — nothing hardcoded |
-| Per-call options | `voice`, `model`, `speed`, `emotion` via `tts.speak` |
+| Per-call options | `voice`, `model`, `speed`, `emotion`, `volume` via `tts.speak` |
+| Inline tags | `<volume>`, `<speed>`, `<emotion>`, `<break>`, `<spell>` survive streaming intact |
 | Streaming | WebSocket streaming so Assist starts speaking before the sentence is finished |
 | Key rotation | Re-auth and reconfigure flows, no reinstall needed |
 
@@ -42,7 +43,7 @@ The config flow has three steps:
 1. **API key** — validated by loading your voice list
 2. **Model and language** — `sonic-3.5` (recommended), `sonic-3` or `sonic-latest`, plus the default
    language and whether to stream
-3. **Default voice** — the voices available for that language, plus default speed and emotion
+3. **Default voice** — the voices available for that language, plus default speed, volume and emotion
 
 Everything except the API key can be changed later under **Configure**; the API key itself can be
 replaced under **Reconfigure** or via the re-auth prompt that appears when a key stops working.
@@ -76,6 +77,23 @@ data:
     model: sonic-3.5
     speed: fast
     emotion: alarmed
+    volume: 1.4
+```
+
+Whispering is a volume, not an emotion — Cartesia's emotion list has no whisper value:
+
+```yaml
+action: tts.speak
+target:
+  entity_id: tts.cartesia_sonic_tts
+data:
+  media_player_entity_id: media_player.schlafzimmer
+  message: "Die Kinder schlafen schon."
+  language: de-DE
+  options:
+    volume: 0.6
+    speed: slow
+    emotion: calm
 ```
 
 ### Options reference
@@ -86,15 +104,27 @@ data:
 | `model` | `sonic-3.5`, `sonic-3`, `sonic-latest` |
 | `speed` | `0.6`–`1.5`, or one of `slowest`, `slow`, `normal`, `fast`, `fastest`. Values outside the range are clamped. |
 | `emotion` | One of Cartesia's emotion names. Most reliable: `neutral`, `calm`, `angry`, `content`, `sad`, `scared`. |
+| `volume` | `0.5`–`2.0`. Below 1.0 gets you a quieter, whisper-like delivery. Clamped like `speed`. |
 
-Unknown speed or emotion values are logged and dropped rather than failing the call.
+Unknown speed, volume or emotion values are logged and dropped rather than failing the call.
 
 ## Things worth knowing
 
-**Emotion and speed are guidance, not switches.** Cartesia treats both as hints so the result stays
-natural — the same `emotion: angry` will be more audible on a line that reads angry than on a
+**Inline tags work, including mid-stream.** Cartesia understands `<volume ratio="0.5"/>`,
+`<speed ratio="1.2"/>`, `<emotion value="calm"/>`, `<break time="500ms"/>` and `<spell>ABC</spell>`
+inside the message itself, which is how you change delivery part-way through a sentence. When a
+language model streams a response token by token, a tag can end up split across two chunks; the
+integration buffers the fragment and re-joins it, so Cartesia never reads a half-written tag out
+loud.
+
+**Emotion, speed and volume are guidance, not switches.** Cartesia treats them as hints so the
+result stays natural — the same `emotion: angry` will be more audible on a line that reads angry than on a
 neutral one. They are only applied on `sonic-3.5` and `sonic-3`; on `sonic-latest` they are dropped
 with a debug log line.
+
+**Interrupted announcements stop costing credits.** If a stream is cut short — barge-in, a player
+that gives up — the integration sends Cartesia an explicit cancel for the context instead of just
+dropping the socket, so nothing that has not started generating is billed.
 
 **Language code ≠ accent.** The accent comes from the voice, not from the `language` option. A
 German-language request on an English voice will speak German with an English accent. Pick the
@@ -129,6 +159,17 @@ logger:
   with the stored default voice and retries the voice list every hour.
 - **`No Cartesia voice configured`** → set a default voice under Configure, or pass `voice` in the
   service call.
+
+## Development
+
+```bash
+pip install aiohttp pytest && pytest tests/unit -q
+```
+
+`custom_components/cartesia_tts/api.py` carries no Home Assistant imports, so its tests run on any
+supported Python. The tests under `tests/ha` boot a real Home Assistant and therefore need Python
+3.14.2+ and `pip install -r requirements-test.txt`; they are skipped automatically when
+`pytest-homeassistant-custom-component` is not installed.
 
 ## License
 

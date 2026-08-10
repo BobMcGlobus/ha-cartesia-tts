@@ -12,7 +12,7 @@ import sys
 import types
 from pathlib import Path
 
-COMPONENT = Path(__file__).resolve().parents[1] / "custom_components" / "cartesia_tts"
+COMPONENT = Path(__file__).resolve().parents[2] / "custom_components" / "cartesia_tts"
 
 if "cartesia_tts" not in sys.modules:
     _package = types.ModuleType("cartesia_tts")

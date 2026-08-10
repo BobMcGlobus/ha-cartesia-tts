@@ -32,6 +32,8 @@ from .const import (
     CARTESIA_VERSION,
     EMOTIONS,
     MAX_BUFFER_DELAY_MS,
+    MAX_RETRY_AFTER,
+    MAX_TAG_LENGTH,
     MODELS_WITH_GENERATION_CONFIG,
     MP3_BIT_RATE,
     MP3_SAMPLE_RATE,
@@ -44,6 +46,8 @@ from .const import (
     SPEED_MIN,
     VOICES_MAX_PAGES,
     VOICES_PAGE_SIZE,
+    VOLUME_MAX,
+    VOLUME_MIN,
     WS_BASE,
     WS_RECEIVE_TIMEOUT,
 )
@@ -104,33 +108,64 @@ def wav_header(
     )
 
 
-def normalize_speed(speed: Any) -> float | None:
-    """Map a keyword or number onto Cartesia's speed range, or None if unset."""
-    if speed is None or speed == "":
+def _normalize_ratio(
+    value: Any, minimum: float, maximum: float, label: str, hint: str = ""
+) -> float | None:
+    """Coerce a numeric option into a range, or None if it is unusable."""
+    if value is None or value == "":
         return None
-    if isinstance(speed, str):
-        key = speed.strip().lower()
-        if key in SPEED_KEYWORDS:
-            return SPEED_KEYWORDS[key]
-        try:
-            value = float(key)
-        except ValueError:
-            _LOGGER.warning(
-                "Ignoring unknown speed %r, expected a number or one of %s",
-                speed,
-                ", ".join(SPEED_KEYWORDS),
-            )
-            return None
-    elif isinstance(speed, (int, float)) and not isinstance(speed, bool):
-        value = float(speed)
-    else:
-        _LOGGER.warning("Ignoring unsupported speed value %r", speed)
+    if isinstance(value, bool) or not isinstance(value, (int, float, str)):
+        _LOGGER.warning("Ignoring unsupported %s value %r", label, value)
         return None
 
-    clamped = min(max(value, SPEED_MIN), SPEED_MAX)
-    if clamped != value:
-        _LOGGER.debug("Clamped speed %s to %s", value, clamped)
+    if isinstance(value, str):
+        try:
+            number = float(value.strip())
+        except ValueError:
+            _LOGGER.warning(
+                "Ignoring unknown %s %r, expected a number%s", label, value, hint
+            )
+            return None
+    else:
+        number = float(value)
+
+    clamped = min(max(number, minimum), maximum)
+    if clamped != number:
+        _LOGGER.debug("Clamped %s %s to %s", label, number, clamped)
     return clamped
+
+
+def normalize_speed(speed: Any) -> float | None:
+    """Map a keyword or number onto Cartesia's speed range, or None if unset."""
+    if isinstance(speed, str) and (key := speed.strip().lower()) in SPEED_KEYWORDS:
+        return SPEED_KEYWORDS[key]
+    return _normalize_ratio(
+        speed, SPEED_MIN, SPEED_MAX, "speed", f" or one of {', '.join(SPEED_KEYWORDS)}"
+    )
+
+
+def split_pending_tag(text: str) -> tuple[str, str]:
+    """Split off a trailing inline tag that is not closed yet.
+
+    Cartesia supports inline tags such as ``<volume ratio="0.5"/>``. When a
+    language model streams token by token, a tag can straddle two chunks, and
+    Cartesia then reads the fragment out loud instead of applying it. The
+    unfinished part is returned as a carry to be prepended to the next chunk.
+
+    Returns a ``(sendable, carry)`` pair.
+    """
+    start = text.rfind("<")
+    if start == -1 or ">" in text[start:]:
+        return text, ""
+    if len(text) - start > MAX_TAG_LENGTH:
+        # Far longer than any Cartesia tag, so this "<" is just text.
+        return text, ""
+    return text[:start], text[start:]
+
+
+def normalize_volume(volume: Any) -> float | None:
+    """Map a volume option onto Cartesia's range, or None if unset."""
+    return _normalize_ratio(volume, VOLUME_MIN, VOLUME_MAX, "volume")
 
 
 def normalize_emotion(emotion: Any) -> str | None:
@@ -163,25 +198,44 @@ def normalize_emotion(emotion: Any) -> str | None:
 
 
 def build_generation_config(
-    speed: Any, emotion: Any, model: str
+    *, speed: Any = None, emotion: Any = None, volume: Any = None, model: str
 ) -> dict[str, Any] | None:
     """Build the ``generation_config`` payload, or None when nothing applies."""
-    normalized_speed = normalize_speed(speed)
-    normalized_emotion = normalize_emotion(emotion)
-    if normalized_speed is None and normalized_emotion is None:
+    config: dict[str, Any] = {}
+    for key, value in (
+        ("speed", normalize_speed(speed)),
+        ("emotion", normalize_emotion(emotion)),
+        ("volume", normalize_volume(volume)),
+    ):
+        if value is not None:
+            config[key] = value
+
+    if not config:
         return None
     if model not in MODELS_WITH_GENERATION_CONFIG:
         _LOGGER.debug(
-            "Model %s does not support speed/emotion controls, dropping them", model
+            "Model %s does not support speed/emotion/volume controls, dropping %s",
+            model,
+            ", ".join(config),
         )
         return None
-
-    config: dict[str, Any] = {}
-    if normalized_speed is not None:
-        config["speed"] = normalized_speed
-    if normalized_emotion is not None:
-        config["emotion"] = normalized_emotion
     return config
+
+
+def _retry_after(header: str | None) -> float:
+    """Honour a ``Retry-After`` delay if the response carries one.
+
+    Only the seconds form is handled; an HTTP-date or a missing header falls
+    back to the fixed backoff. The value is capped so a long server-side hint
+    cannot stall a Home Assistant service call.
+    """
+    if not header:
+        return RETRY_BACKOFF
+    try:
+        seconds = float(header.strip())
+    except ValueError:
+        return RETRY_BACKOFF
+    return min(max(seconds, 0.0), MAX_RETRY_AFTER)
 
 
 class CartesiaClient:
@@ -293,10 +347,16 @@ class CartesiaClient:
                     await sender
                 except BaseException:
                     # Covers errors as well as the consumer closing the
-                    # generator early; never leave the sender task dangling.
+                    # generator early (barge-in, player abort). Stop sending
+                    # first, then tell Cartesia to drop whatever it has not
+                    # started generating yet - that is billed quota otherwise.
                     sender.cancel()
                     with contextlib.suppress(BaseException):
                         await sender
+                    with contextlib.suppress(BaseException):
+                        await websocket.send_json(
+                            {"context_id": context_id, "cancel": True}
+                        )
                     raise
         except aiohttp.WSServerHandshakeError as err:
             if err.status in (401, 403):
@@ -318,12 +378,20 @@ class CartesiaClient:
     ) -> None:
         """Forward text chunks, marking the last one as the end of the context.
 
-        One chunk is held back so the final message can carry
-        ``"continue": false`` without sending an empty transcript.
+        Two things are held back:
+
+        * one whole chunk, so the final message can carry ``"continue": false``
+          without sending an empty transcript,
+        * a trailing, still incomplete inline tag, because Cartesia reads a
+          split tag out loud instead of applying it.
         """
+        carry = ""
         pending: str | None = None
         async for chunk in transcript_gen:
             if not chunk:
+                continue
+            text, carry = split_pending_tag(carry + chunk)
+            if not text:
                 continue
             if pending is not None:
                 await websocket.send_json(
@@ -335,14 +403,18 @@ class CartesiaClient:
                         "max_buffer_delay_ms": MAX_BUFFER_DELAY_MS,
                     }
                 )
-            pending = chunk
+            pending = text
 
+        # Whatever is left, including a tag that never closed - dropping it
+        # would swallow text whenever a model writes a bare "<".
+        tail = (pending or "") + carry
         await websocket.send_json(
             {
                 **base,
                 "context_id": context_id,
-                # A lone space closes an empty context without an API error.
-                "transcript": pending if pending is not None else " ",
+                # Cartesia does not document an empty transcript as a way to
+                # close a context, so an empty message is padded to a space.
+                "transcript": tail or " ",
                 "continue": False,
             }
         )
@@ -444,8 +516,11 @@ class CartesiaClient:
             return False
         if attempt != 0:
             return False
-        _LOGGER.debug("Cartesia returned %s for %s, retrying", response.status, path)
-        await asyncio.sleep(RETRY_BACKOFF)
+        delay = _retry_after(response.headers.get("Retry-After"))
+        _LOGGER.debug(
+            "Cartesia returned %s for %s, retrying in %ss", response.status, path, delay
+        )
+        await asyncio.sleep(delay)
         return True
 
     async def _raise_for_status(

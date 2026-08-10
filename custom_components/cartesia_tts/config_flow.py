@@ -38,6 +38,7 @@ from .const import (
     CONF_SPEED,
     CONF_STREAMING,
     CONF_VOICE,
+    CONF_VOLUME,
     DEFAULT_LANGUAGE,
     DEFAULT_MODEL,
     DOMAIN,
@@ -48,6 +49,9 @@ from .const import (
     SPEED_DEFAULT,
     SPEED_MAX,
     SPEED_MIN,
+    VOLUME_DEFAULT,
+    VOLUME_MAX,
+    VOLUME_MIN,
 )
 from .tts import derive_languages
 
@@ -62,6 +66,11 @@ MODEL_SELECTOR = SelectSelector(
 SPEED_SELECTOR = NumberSelector(
     NumberSelectorConfig(
         min=SPEED_MIN, max=SPEED_MAX, step=0.05, mode=NumberSelectorMode.SLIDER
+    )
+)
+VOLUME_SELECTOR = NumberSelector(
+    NumberSelectorConfig(
+        min=VOLUME_MIN, max=VOLUME_MAX, step=0.05, mode=NumberSelectorMode.SLIDER
     )
 )
 # Cartesia flags the six primary emotions as the most reliable ones, so they go
@@ -244,6 +253,9 @@ class CartesiaConfigFlow(ConfigFlow, domain=DOMAIN):
             vol.Required(
                 CONF_SPEED, default=defaults.get(CONF_SPEED, SPEED_DEFAULT)
             ): SPEED_SELECTOR,
+            vol.Required(
+                CONF_VOLUME, default=defaults.get(CONF_VOLUME, VOLUME_DEFAULT)
+            ): VOLUME_SELECTOR,
             vol.Optional(
                 CONF_EMOTION,
                 description={"suggested_value": defaults.get(CONF_EMOTION)},
@@ -394,6 +406,10 @@ class CartesiaOptionsFlow(OptionsFlowWithReload):
                         CONF_SPEED,
                         default=self._options.get(CONF_SPEED, SPEED_DEFAULT),
                     ): SPEED_SELECTOR,
+                    vol.Required(
+                        CONF_VOLUME,
+                        default=self._options.get(CONF_VOLUME, VOLUME_DEFAULT),
+                    ): VOLUME_SELECTOR,
                     vol.Optional(
                         CONF_EMOTION,
                         description={

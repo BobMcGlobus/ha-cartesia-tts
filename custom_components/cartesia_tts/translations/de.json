@@ -20,7 +20,7 @@
           "streaming": "Audio schon während der Erzeugung streamen"
         },
         "data_description": {
-          "model": "sonic-3.5 ist die empfohlene Voreinstellung. Tempo und Emotion wirken nur bei sonic-3.5 und sonic-3.",
+          "model": "sonic-3.5 ist die empfohlene Voreinstellung. Tempo, Emotion und Lautstärke wirken nur bei sonic-3.5 und sonic-3.",
           "streaming": "Verkürzt die Wartezeit, bis Assist zu sprechen beginnt. Ausschalten, falls dein Media-Player kein gestreamtes WAV abspielen kann."
         }
       },
@@ -30,11 +30,13 @@
         "data": {
           "voice": "Standardstimme",
           "speed": "Tempo",
-          "emotion": "Emotion"
+          "emotion": "Emotion",
+          "volume": "Lautstärke"
         },
         "data_description": {
           "speed": "1.0 ist das natürliche Tempo. Cartesia versteht den Wert als Richtwert, nicht als exakten Faktor.",
-          "emotion": "Optional. Die ersten sechs Einträge gelten bei Cartesia als am zuverlässigsten."
+          "emotion": "Optional. Die ersten sechs Einträge gelten bei Cartesia als am zuverlässigsten.",
+          "volume": "1.0 ist die natürliche Lautstärke. Werte unter 1.0 klingen leiser, Richtung Flüstern."
         }
       },
       "reauth_confirm": {
@@ -74,7 +76,7 @@
           "streaming": "Audio schon während der Erzeugung streamen"
         },
         "data_description": {
-          "model": "Tempo und Emotion wirken nur bei sonic-3.5 und sonic-3.",
+          "model": "sonic-3.5 ist die empfohlene Voreinstellung. Tempo, Emotion und Lautstärke wirken nur bei sonic-3.5 und sonic-3.",
           "streaming": "Verkürzt die Wartezeit, bis Assist zu sprechen beginnt. Ausschalten, falls dein Media-Player kein gestreamtes WAV abspielen kann."
         }
       },
@@ -84,11 +86,13 @@
         "data": {
           "voice": "Standardstimme",
           "speed": "Tempo",
-          "emotion": "Emotion"
+          "emotion": "Emotion",
+          "volume": "Lautstärke"
         },
         "data_description": {
           "speed": "1.0 ist das natürliche Tempo.",
-          "emotion": "Optional. Die ersten sechs Einträge gelten bei Cartesia als am zuverlässigsten."
+          "emotion": "Optional. Die ersten sechs Einträge gelten bei Cartesia als am zuverlässigsten.",
+          "volume": "1.0 ist die natürliche Lautstärke. Werte unter 1.0 klingen leiser, Richtung Flüstern."
         }
       }
     }

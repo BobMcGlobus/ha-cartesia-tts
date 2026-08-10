@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import AsyncGenerator, Mapping
+from dataclasses import dataclass
 from datetime import timedelta
 from typing import Any, override
 
@@ -37,6 +38,7 @@ from .const import (
     CONF_SPEED,
     CONF_STREAMING,
     CONF_VOICE,
+    CONF_VOLUME,
     DEFAULT_LANGUAGE,
     DEFAULT_MODEL,
     DOMAIN,
@@ -49,6 +51,16 @@ from .const import (
 _LOGGER = logging.getLogger(__name__)
 
 PARALLEL_UPDATES = 0
+
+
+@dataclass(frozen=True, slots=True)
+class _Request:
+    """Everything a synthesis call needs after options have been merged."""
+
+    model: str
+    voice_id: str
+    language: str | None
+    generation_config: dict[str, Any] | None
 
 
 def derive_languages(voices: list[dict[str, Any]]) -> list[str]:
@@ -87,8 +99,17 @@ class CartesiaTTSEntity(TextToSpeechEntity):
     # None or UNDEFINED, so this is set explicitly rather than left to the
     # device name. Together with the device name it reads "Cartesia Sonic TTS".
     _attr_name = "Sonic TTS"
+    # Core is split on this: ElevenLabs marks its TTS entity as CONFIG, Google
+    # Cloud and OpenAI leave it unset. Following ElevenLabs keeps the entity out
+    # of the default dashboard, where a TTS engine is noise.
     _attr_entity_category = EntityCategory.CONFIG
-    _attr_supported_options = [ATTR_VOICE, ATTR_MODEL, CONF_SPEED, CONF_EMOTION]
+    _attr_supported_options = [
+        ATTR_VOICE,
+        ATTR_MODEL,
+        CONF_SPEED,
+        CONF_EMOTION,
+        CONF_VOLUME,
+    ]
 
     def __init__(self, entry: CartesiaConfigEntry) -> None:
         """Initialize the entity from the config entry."""
@@ -169,6 +190,7 @@ class CartesiaTTSEntity(TextToSpeechEntity):
             ATTR_MODEL: self._entry.options.get(CONF_MODEL, DEFAULT_MODEL),
             CONF_SPEED: self._entry.options.get(CONF_SPEED),
             CONF_EMOTION: self._entry.options.get(CONF_EMOTION),
+            CONF_VOLUME: self._entry.options.get(CONF_VOLUME),
             ATTR_VOICE: self._entry.options.get(CONF_VOICE),
         }
         return {key: value for key, value in options.items() if value is not None}
@@ -190,14 +212,14 @@ class CartesiaTTSEntity(TextToSpeechEntity):
         self, message: str, language: str, options: dict[str, Any]
     ) -> TtsAudioType:
         """Synthesize a complete message and return MP3 bytes."""
-        model, voice_id, generation_config = self._resolve(options)
+        request = self._resolve(options, language)
         try:
             audio = await self._client.synthesize_bytes(
-                model=model,
+                model=request.model,
                 transcript=message,
-                voice_id=voice_id,
-                language=self._to_cartesia_language(language),
-                generation_config=generation_config,
+                voice_id=request.voice_id,
+                language=request.language,
+                generation_config=request.generation_config,
             )
         except CartesiaAuthError as err:
             self._entry.async_start_reauth(self.hass)
@@ -217,15 +239,15 @@ class CartesiaTTSEntity(TextToSpeechEntity):
 
     async def _stream_audio(self, request: TTSAudioRequest) -> AsyncGenerator[bytes]:
         """Yield a WAV header followed by Cartesia's raw PCM chunks."""
-        model, voice_id, generation_config = self._resolve(request.options)
+        resolved = self._resolve(request.options, request.language)
         yield wav_header()
         try:
             async for chunk in self._client.synthesize_stream(
-                model=model,
+                model=resolved.model,
                 transcript_gen=request.message_gen,
-                voice_id=voice_id,
-                language=self._to_cartesia_language(request.language),
-                generation_config=generation_config,
+                voice_id=resolved.voice_id,
+                language=resolved.language,
+                generation_config=resolved.generation_config,
             ):
                 yield chunk
         except CartesiaAuthError as err:
@@ -235,8 +257,8 @@ class CartesiaTTSEntity(TextToSpeechEntity):
             raise HomeAssistantError(f"Cartesia TTS stream failed: {err}") from err
 
     def _resolve(
-        self, options: dict[str, Any] | None
-    ) -> tuple[str, str, dict[str, Any] | None]:
+        self, options: dict[str, Any] | None, language: str | None
+    ) -> _Request:
         """Merge per-call options with the configured defaults."""
         options = options or {}
         model = options.get(ATTR_MODEL) or self._entry.options.get(
@@ -248,12 +270,41 @@ class CartesiaTTSEntity(TextToSpeechEntity):
                 "No Cartesia voice configured. Set a default voice in the"
                 " integration options or pass one via the voice option."
             )
-        generation_config = build_generation_config(
-            options.get(CONF_SPEED, self._entry.options.get(CONF_SPEED)),
-            options.get(CONF_EMOTION, self._entry.options.get(CONF_EMOTION)),
-            model,
+        code = self._to_cartesia_language(language)
+        self._log_language_mismatch(voice_id, code)
+        return _Request(
+            model=model,
+            voice_id=voice_id,
+            language=code,
+            generation_config=build_generation_config(
+                speed=options.get(CONF_SPEED, self._entry.options.get(CONF_SPEED)),
+                emotion=options.get(
+                    CONF_EMOTION, self._entry.options.get(CONF_EMOTION)
+                ),
+                volume=options.get(CONF_VOLUME, self._entry.options.get(CONF_VOLUME)),
+                model=model,
+            ),
         )
-        return model, voice_id, generation_config
+
+    def _log_language_mismatch(self, voice_id: str, language: str | None) -> None:
+        """Note when a voice is used outside the language it was built for.
+
+        This is legal and sometimes wanted, but it is also the most common
+        cause of "the German sounds American" reports, so it belongs in the log.
+        """
+        if not language:
+            return
+        voice = next((v for v in self._voices if v.get("id") == voice_id), None)
+        if voice is None or not (voice_language := voice.get("language")):
+            return
+        if voice_language != language:
+            _LOGGER.debug(
+                "Voice %s is a %s voice but the request is %s; expect the accent"
+                " of the voice, not of the language",
+                voice.get("name") or voice_id,
+                voice_language,
+                language,
+            )
 
     def _to_cartesia_language(self, language: str | None) -> str | None:
         """Translate an HA locale into a Cartesia ISO 639-1 code."""

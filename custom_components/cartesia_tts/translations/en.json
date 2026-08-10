@@ -20,7 +20,7 @@
           "streaming": "Stream audio while it is generated"
         },
         "data_description": {
-          "model": "sonic-3.5 is the recommended default. Speed and emotion only work on sonic-3.5 and sonic-3.",
+          "model": "sonic-3.5 is the recommended default. Speed, emotion and volume are only applied on sonic-3.5 and sonic-3.",
           "streaming": "Lowers the delay before Assist starts speaking. Turn this off if your media player cannot play a streamed WAV."
         }
       },
@@ -30,11 +30,13 @@
         "data": {
           "voice": "Default voice",
           "speed": "Speed",
-          "emotion": "Emotion"
+          "emotion": "Emotion",
+          "volume": "Volume"
         },
         "data_description": {
           "speed": "1.0 is the natural pace. Cartesia treats this as guidance, not an exact factor.",
-          "emotion": "Optional. The first six entries are the ones Cartesia considers most reliable."
+          "emotion": "Optional. The first six entries are the ones Cartesia considers most reliable.",
+          "volume": "1.0 is the natural level. Values below 1.0 give a quieter, whisper-like delivery."
         }
       },
       "reauth_confirm": {
@@ -74,7 +76,7 @@
           "streaming": "Stream audio while it is generated"
         },
         "data_description": {
-          "model": "Speed and emotion only work on sonic-3.5 and sonic-3.",
+          "model": "sonic-3.5 is the recommended default. Speed, emotion and volume are only applied on sonic-3.5 and sonic-3.",
           "streaming": "Lowers the delay before Assist starts speaking. Turn this off if your media player cannot play a streamed WAV."
         }
       },
@@ -84,11 +86,13 @@
         "data": {
           "voice": "Default voice",
           "speed": "Speed",
-          "emotion": "Emotion"
+          "emotion": "Emotion",
+          "volume": "Volume"
         },
         "data_description": {
           "speed": "1.0 is the natural pace.",
-          "emotion": "Optional. The first six entries are the ones Cartesia considers most reliable."
+          "emotion": "Optional. The first six entries are the ones Cartesia considers most reliable.",
+          "volume": "1.0 is the natural level. Values below 1.0 give a quieter, whisper-like delivery."
         }
       }
     }

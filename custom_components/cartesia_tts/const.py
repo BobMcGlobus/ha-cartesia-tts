@@ -21,6 +21,7 @@ CONF_VOICE: Final = "voice"
 CONF_LANGUAGE: Final = "language"
 CONF_SPEED: Final = "speed"
 CONF_EMOTION: Final = "emotion"
+CONF_VOLUME: Final = "volume"
 CONF_STREAMING: Final = "streaming"
 
 MODELS: Final = ["sonic-3.5", "sonic-3", "sonic-latest"]
@@ -42,10 +43,17 @@ PCM_ENCODING: Final = "pcm_s16le"
 REQUEST_TIMEOUT: Final = 60
 WS_RECEIVE_TIMEOUT: Final = 30
 RETRY_BACKOFF: Final = 1.0
+# Upper bound for a server-supplied Retry-After, so one retry cannot stall a
+# service call for minutes.
+MAX_RETRY_AFTER: Final = 10.0
 VOICES_PAGE_SIZE: Final = 100
 VOICES_MAX_PAGES: Final = 25
 # Let Cartesia buffer partial input before it starts generating (input streaming).
 MAX_BUFFER_DELAY_MS: Final = 1000
+# Longest inline tag worth holding back while streaming. The longest documented
+# one is "<emotion value=\"contemplative\"/>" at 32 characters; beyond this a
+# "<" is treated as ordinary text.
+MAX_TAG_LENGTH: Final = 64
 
 # How often the cached /voices list is refreshed while the entry is loaded.
 VOICES_REFRESH_INTERVAL_HOURS: Final = 1
@@ -62,6 +70,12 @@ SPEED_KEYWORDS: Final = {
     "fast": 1.2,
     "fastest": 1.5,
 }
+
+# Volume: Cartesia accepts a float in [0.5, 2.0]. Values below 1.0 are the way
+# to get a whisper-like delivery; the emotion enum has no whisper value.
+VOLUME_MIN: Final = 0.5
+VOLUME_MAX: Final = 2.0
+VOLUME_DEFAULT: Final = 1.0
 
 # generation_config.emotion is a single enum value (beta). The first six are the
 # ones Cartesia documents as most reliable.
