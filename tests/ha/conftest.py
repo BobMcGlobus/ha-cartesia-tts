@@ -69,12 +69,22 @@ def mock_client() -> Generator[AsyncMock]:
         yield client
 
 
-@pytest.fixture
-def config_entry() -> MockConfigEntry:
-    """A configured entry with a German default voice."""
+def _entry(options: dict[str, Any]) -> MockConfigEntry:
     return MockConfigEntry(
         domain=DOMAIN,
         title="Cartesia Sonic TTS",
         data={"api_key": "sk_car_test"},
-        options=dict(OPTIONS),
+        options=options,
     )
+
+
+@pytest.fixture
+def config_entry() -> MockConfigEntry:
+    """A configured entry with a German default voice."""
+    return _entry(dict(OPTIONS))
+
+
+@pytest.fixture
+def config_entry_without_voice() -> MockConfigEntry:
+    """An entry that never got a default voice, e.g. an interrupted setup."""
+    return _entry({k: v for k, v in OPTIONS.items() if k != CONF_VOICE})

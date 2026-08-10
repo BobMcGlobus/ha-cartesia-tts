@@ -17,13 +17,9 @@ from custom_components.cartesia_tts.api import CartesiaAuthError, CartesiaError
 from custom_components.cartesia_tts.const import (
     CONF_EMOTION,
     CONF_SPEED,
-    CONF_VOICE,
     CONF_VOLUME,
-    DOMAIN,
 )
 from custom_components.cartesia_tts.tts import CartesiaTTSEntity, derive_languages
-
-from .conftest import OPTIONS
 
 ENTITY_ID = "tts.cartesia_sonic_tts"
 
@@ -146,16 +142,11 @@ async def test_controls_are_dropped_on_a_model_without_support(
 
 
 async def test_missing_voice_raises(
-    hass: HomeAssistant, mock_client: AsyncMock
+    hass: HomeAssistant,
+    mock_client: AsyncMock,
+    config_entry_without_voice: MockConfigEntry,
 ) -> None:
-    options = {key: value for key, value in OPTIONS.items() if key != CONF_VOICE}
-    entry = MockConfigEntry(
-        domain=DOMAIN,
-        title="Cartesia Sonic TTS",
-        data={"api_key": "sk_car_test"},
-        options=options,
-    )
-    await setup_entry(hass, entry)
+    await setup_entry(hass, config_entry_without_voice)
     tts_entity = entity(hass)
 
     with pytest.raises(HomeAssistantError, match="No Cartesia voice"):
