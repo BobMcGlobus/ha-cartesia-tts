@@ -21,7 +21,7 @@
         },
         "data_description": {
           "model": "sonic-3.5 ist die empfohlene Voreinstellung. Tempo, Emotion und Lautstärke wirken nur bei sonic-3.5 und sonic-3.",
-          "streaming": "Verkürzt die Wartezeit, bis Assist zu sprechen beginnt. Ausschalten, falls dein Media-Player kein gestreamtes WAV abspielen kann."
+          "streaming": "Verkürzt die Wartezeit, bis Assist zu sprechen beginnt. Home Assistant wandelt den Stream für den Player um, kann also angelassen werden; ausschalten liefert stattdessen eine komplette MP3 pro Anfrage."
         }
       },
       "voice": {
@@ -77,7 +77,7 @@
         },
         "data_description": {
           "model": "sonic-3.5 ist die empfohlene Voreinstellung. Tempo, Emotion und Lautstärke wirken nur bei sonic-3.5 und sonic-3.",
-          "streaming": "Verkürzt die Wartezeit, bis Assist zu sprechen beginnt. Ausschalten, falls dein Media-Player kein gestreamtes WAV abspielen kann."
+          "streaming": "Verkürzt die Wartezeit, bis Assist zu sprechen beginnt. Home Assistant wandelt den Stream für den Player um, kann also angelassen werden; ausschalten liefert stattdessen eine komplette MP3 pro Anfrage."
         }
       },
       "voice": {

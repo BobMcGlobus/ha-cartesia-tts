@@ -21,7 +21,7 @@
         },
         "data_description": {
           "model": "sonic-3.5 is the recommended default. Speed, emotion and volume are only applied on sonic-3.5 and sonic-3.",
-          "streaming": "Lowers the delay before Assist starts speaking. Turn this off if your media player cannot play a streamed WAV."
+          "streaming": "Lowers the delay before Assist starts speaking. Home Assistant transcodes the stream for the player, so this is safe to leave on; turn it off to fall back to one complete MP3 per request."
         }
       },
       "voice": {
@@ -77,7 +77,7 @@
         },
         "data_description": {
           "model": "sonic-3.5 is the recommended default. Speed, emotion and volume are only applied on sonic-3.5 and sonic-3.",
-          "streaming": "Lowers the delay before Assist starts speaking. Turn this off if your media player cannot play a streamed WAV."
+          "streaming": "Lowers the delay before Assist starts speaking. Home Assistant transcodes the stream for the player, so this is safe to leave on; turn it off to fall back to one complete MP3 per request."
         }
       },
       "voice": {

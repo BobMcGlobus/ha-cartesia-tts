@@ -136,10 +136,11 @@ voice for the accent you want.
 actually cover, so it tracks Cartesia's offering instead of a hardcoded list. Languages that don't
 have an HA locale mapping yet are exposed under their bare ISO code and logged.
 
-**Streaming uses WAV.** Cartesia's WebSocket only emits raw PCM, so the streamed response is a WAV
-with an open-ended length header. That plays fine on ffmpeg-based players and ESPHome voice
-satellites; if a specific player chokes on it, turn *Stream audio while it is generated* off in the
-options — the integration then falls back to the complete-MP3 path.
+**Streaming uses WAV internally.** Cartesia's WebSocket only emits raw PCM, so the streamed
+response is a WAV with an open-ended length header. Home Assistant transcodes it to whatever the
+player asked for — MP3 unless the pipeline requests otherwise — so media players do not normally
+see the WAV at all. If streaming ever misbehaves, turn *Stream audio while it is generated* off and
+the integration falls back to one complete MP3 from `/tts/bytes`.
 
 **Free tier.** Cartesia's free tier is roughly 20,000 credits per month (1 credit ≈ 1 character).
 Home Assistant caches TTS output per (message, language, options), so repeated announcements do not
