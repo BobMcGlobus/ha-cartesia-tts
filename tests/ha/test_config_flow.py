@@ -16,11 +16,14 @@ from custom_components.cartesia_tts.api import (
 )
 from custom_components.cartesia_tts.const import (
     CONF_EMOTION,
+    CONF_FALLBACK_ENGINE,
     CONF_LANGUAGE,
+    CONF_MONTHLY_ALLOWANCE,
     CONF_SPEED,
     CONF_STREAMING,
     CONF_VOICE,
     CONF_VOLUME,
+    DEFAULT_MONTHLY_ALLOWANCE,
     DOMAIN,
 )
 
@@ -65,6 +68,8 @@ async def test_user_flow_creates_entry(
         CONF_SPEED: 1.2,
         CONF_VOLUME: 0.8,
         CONF_EMOTION: "calm",
+        # Seeded so the remaining-credits sensor works out of the box.
+        CONF_MONTHLY_ALLOWANCE: DEFAULT_MONTHLY_ALLOWANCE,
     }
 
 
@@ -163,9 +168,17 @@ async def test_options_flow_roundtrip(
         result["flow_id"],
         {CONF_VOICE: "en-voice-1", CONF_SPEED: 0.9, CONF_VOLUME: 1.5},
     )
+    assert result["step_id"] == "usage"
+
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        {CONF_MONTHLY_ALLOWANCE: 50000, CONF_FALLBACK_ENGINE: "tts.piper"},
+    )
     await hass.async_block_till_done()
 
     assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert config_entry.options[CONF_MONTHLY_ALLOWANCE] == 50000
+    assert config_entry.options[CONF_FALLBACK_ENGINE] == "tts.piper"
     assert config_entry.options["model"] == "sonic-3"
     assert config_entry.options[CONF_LANGUAGE] == "en-US"
     assert config_entry.options[CONF_VOICE] == "en-voice-1"

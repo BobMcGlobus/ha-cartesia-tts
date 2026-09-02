@@ -16,6 +16,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 from datetime import datetime
+from typing import Any
 
 from homeassistant.core import callback
 from homeassistant.util import dt as dt_util
@@ -91,10 +92,15 @@ class UsageTracker:
         self._notify()
 
     @callback
-    def async_set_api_used(self, used: int) -> None:
+    def async_set_api_used(self, used: Any) -> None:
         """Store the figure read from the usage API."""
+        try:
+            value = int(used)
+        except (TypeError, ValueError):
+            _LOGGER.debug("Ignoring unusable usage figure %r", used)
+            return
         self._roll_over()
-        self.api_used = used
+        self.api_used = value
         self._notify()
 
     @callback
@@ -110,5 +116,13 @@ class UsageTracker:
 
     @callback
     def _notify(self) -> None:
+        """Update the displays, never at the cost of the speech request.
+
+        This runs inside the synthesis path, so a listener that raises must
+        not take the announcement down with it.
+        """
         for listener in list(self._listeners):
-            listener()
+            try:
+                listener()
+            except Exception:  # noqa: BLE001 - a broken display is not fatal
+                _LOGGER.exception("Cartesia usage listener failed")

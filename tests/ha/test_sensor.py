@@ -110,3 +110,30 @@ async def test_usage_api_is_not_polled_without_an_admin_key(
     mock_client.has_admin_key = False
     await setup_entry(hass, config_entry)
     mock_client.usage_credits.assert_not_awaited()
+
+
+async def test_admin_key_switches_the_source_to_the_api(
+    hass: HomeAssistant, mock_client: AsyncMock, config_entry: MockConfigEntry
+) -> None:
+    """With an admin key the exact figures replace the local estimate."""
+    mock_client.has_admin_key = True
+    mock_client.usage_credits.return_value = 7321
+    await setup_entry(hass, config_entry)
+
+    used = hass.states.get(USED)
+    assert used.state == "7321"
+    assert used.attributes["source"] == "api"
+    assert hass.states.get(LEFT).state == str(20000 - 7321)
+
+
+async def test_unusable_api_figures_are_ignored(
+    hass: HomeAssistant, mock_client: AsyncMock, config_entry: MockConfigEntry
+) -> None:
+    """A malformed usage response must not poison the counter."""
+    mock_client.has_admin_key = True
+    mock_client.usage_credits.return_value = None
+    await setup_entry(hass, config_entry)
+
+    used = hass.states.get(USED)
+    assert used.state == "0"
+    assert used.attributes["source"] == "local"

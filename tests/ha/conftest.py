@@ -63,6 +63,10 @@ def mock_client() -> Generator[AsyncMock]:
     client = AsyncMock()
     client.list_voices.return_value = VOICES
     client.synthesize_bytes.return_value = b"ID3fake-mp3"
+    # AsyncMock would otherwise hand out truthy MagicMocks for both of these,
+    # which reads as "an admin key is configured" and poisons the counter.
+    client.has_admin_key = False
+    client.usage_credits.return_value = 0
 
     with (
         patch("custom_components.cartesia_tts.CartesiaClient", return_value=client),
