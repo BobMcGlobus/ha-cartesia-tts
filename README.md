@@ -22,6 +22,10 @@ per-call control over voice, speed, emotion and volume.
 | Streaming | WebSocket streaming so Assist starts speaking before the sentence is finished |
 | Key rotation | Re-auth and reconfigure flows, no reinstall needed |
 
+Defaults to **Sonic 3.6**, Cartesia's model released on 27 August 2026: 44 languages (Sonic 3.5's
+42 plus Odia and Urdu), 61 locales and noticeably more natural pacing than 3.5. Older models stay
+selectable in the dropdown.
+
 ## Installation
 
 ### HACS (recommended)
@@ -43,8 +47,8 @@ You need a Cartesia API key from [play.cartesia.ai/keys](https://play.cartesia.a
 The config flow has three steps:
 
 1. **API key** — validated by loading your voice list
-2. **Model and language** — `sonic-3.5` (recommended), `sonic-3` or `sonic-latest`, plus the default
-   language and whether to stream
+2. **Model and language** — `sonic-3.6` (recommended), `sonic-3.5`, `sonic-3` or `sonic-latest`,
+   plus the default language and whether to stream
 3. **Default voice** — the voices available for that language, plus default speed, volume and emotion
 
 Everything except the API key can be changed later under **Configure**; the API key itself can be
@@ -59,9 +63,9 @@ action: tts.speak
 target:
   entity_id: tts.cartesia_sonic_tts
 data:
-  media_player_entity_id: media_player.wohnzimmer
-  message: "Die Waschmaschine ist fertig."
-  language: de-DE
+  media_player_entity_id: media_player.living_room
+  message: "The washing machine has finished."
+  language: en-GB
 ```
 
 With per-call options:
@@ -71,12 +75,12 @@ action: tts.speak
 target:
   entity_id: tts.cartesia_sonic_tts
 data:
-  media_player_entity_id: media_player.wohnzimmer
-  message: "Achtung, das Garagentor steht seit einer Stunde offen!"
-  language: de-DE
+  media_player_entity_id: media_player.living_room
+  message: "Heads up — the garage door has been open for an hour!"
+  language: en-GB
   options:
     voice: 79a125e8-cd45-4c13-8a67-188112f4dd22
-    model: sonic-3.5
+    model: sonic-3.6
     speed: fast
     emotion: alarmed
     volume: 1.4
@@ -89,9 +93,9 @@ action: tts.speak
 target:
   entity_id: tts.cartesia_sonic_tts
 data:
-  media_player_entity_id: media_player.schlafzimmer
-  message: "Die Kinder schlafen schon."
-  language: de-DE
+  media_player_entity_id: media_player.bedroom
+  message: "The kids are already asleep."
+  language: en-GB
   options:
     volume: 0.6
     speed: slow
@@ -103,7 +107,7 @@ data:
 | Option | Values |
 |---|---|
 | `voice` | A Cartesia voice ID. The voice picker in the assistant UI lists them by name. |
-| `model` | `sonic-3.5`, `sonic-3`, `sonic-latest` |
+| `model` | `sonic-3.6`, `sonic-3.5`, `sonic-3`, `sonic-latest` |
 | `speed` | `0.6`–`1.5`, or one of `slowest`, `slow`, `normal`, `fast`, `fastest`. Values outside the range are clamped. |
 | `emotion` | One of Cartesia's emotion names. Most reliable: `neutral`, `calm`, `angry`, `content`, `sad`, `scared`. |
 | `volume` | `0.5`–`2.0`. Below 1.0 gets you a quieter, whisper-like delivery. Clamped like `speed`. |
@@ -121,8 +125,9 @@ loud.
 
 **Emotion, speed and volume are guidance, not switches.** Cartesia treats them as hints so the
 result stays natural — the same `emotion: angry` will be more audible on a line that reads angry than on a
-neutral one. They are only applied on `sonic-3.5` and `sonic-3`; on `sonic-latest` they are dropped
-with a debug log line.
+neutral one. They are available on `sonic-3` and newer, which covers every model in the
+dropdown; a legacy model id passed through the per-call `model` option has them dropped with a
+debug log line.
 
 **Interrupted announcements stop costing credits.** If a stream is cut short — barge-in, a player
 that gives up — the integration sends Cartesia an explicit cancel for the context instead of just
@@ -144,7 +149,10 @@ the integration falls back to one complete MP3 from `/tts/bytes`.
 
 **Free tier.** Cartesia's free tier is roughly 20,000 credits per month (1 credit ≈ 1 character).
 Home Assistant caches TTS output per (message, language, options), so repeated announcements do not
-cost extra.
+cost extra. Note what Cartesia does when the allowance runs out: with overages disabled, *"requests
+that would exceed your allotment fail until the next renewal or until you upgrade your plan"* — so
+speech simply stops working until the month rolls over. You can see consumption on the
+[usage page](https://play.cartesia.ai/usage).
 
 ## Troubleshooting
 

@@ -192,9 +192,9 @@ def test_generation_config_omits_unset_values() -> None:
     assert build_generation_config(model="sonic-3.5") is None
 
 
-def test_generation_config_dropped_on_unsupported_model() -> None:
+def test_generation_config_dropped_on_legacy_model() -> None:
     assert (
-        build_generation_config(speed="fast", emotion="angry", model="sonic-latest")
+        build_generation_config(speed="fast", emotion="angry", model="sonic-turbo")
         is None
     )
 
@@ -618,3 +618,8 @@ def test_stream_uses_api_key_header_and_version_query() -> None:
         "encoding": "pcm_s16le",
         "sample_rate": 44100,
     }
+
+
+def test_generation_config_survives_a_future_model() -> None:
+    """The gate is a deny-list, so an unknown newer Sonic keeps its controls."""
+    assert build_generation_config(volume=0.7, model="sonic-4") == {"volume": 0.7}

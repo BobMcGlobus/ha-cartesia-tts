@@ -24,11 +24,23 @@ CONF_EMOTION: Final = "emotion"
 CONF_VOLUME: Final = "volume"
 CONF_STREAMING: Final = "streaming"
 
-MODELS: Final = ["sonic-3.5", "sonic-3", "sonic-latest"]
-DEFAULT_MODEL: Final = "sonic-3.5"
+MODELS: Final = ["sonic-3.6", "sonic-3.5", "sonic-3", "sonic-latest"]
+DEFAULT_MODEL: Final = "sonic-3.6"
 
-# generation_config (speed/emotion) is only honoured on these models.
-MODELS_WITH_GENERATION_CONFIG: Final = frozenset({"sonic-3.5", "sonic-3"})
+# generation_config (speed/emotion/volume) is documented as "available on
+# sonic-3 and newer models; not available on earlier models". A deny-list keeps
+# a future Sonic working without a code change, while still dropping the
+# controls for a legacy model id passed through the per-call "model" option.
+MODELS_WITHOUT_GENERATION_CONFIG: Final = frozenset(
+    {
+        "sonic",
+        "sonic-2",
+        "sonic-english",
+        "sonic-multilingual",
+        "sonic-preview-2024",
+        "sonic-turbo",
+    }
+)
 
 DEFAULT_LANGUAGE: Final = "de-DE"
 FALLBACK_LANGUAGES: Final = ["de-DE", "en-US"]
@@ -176,6 +188,7 @@ CARTESIA_TO_HA: Final[dict[str, list[str]]] = {
     "nb": ["nb-NO"],
     "nl": ["nl-NL", "nl-BE"],
     "no": ["nb-NO"],
+    "or": ["or-IN"],
     "pa": ["pa-IN"],
     "pl": ["pl-PL"],
     "pt": ["pt-PT", "pt-BR"],

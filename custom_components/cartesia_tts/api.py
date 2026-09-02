@@ -34,7 +34,7 @@ from .const import (
     MAX_BUFFER_DELAY_MS,
     MAX_RETRY_AFTER,
     MAX_TAG_LENGTH,
-    MODELS_WITH_GENERATION_CONFIG,
+    MODELS_WITHOUT_GENERATION_CONFIG,
     MP3_BIT_RATE,
     MP3_SAMPLE_RATE,
     PCM_ENCODING,
@@ -212,7 +212,7 @@ def build_generation_config(
 
     if not config:
         return None
-    if model not in MODELS_WITH_GENERATION_CONFIG:
+    if model in MODELS_WITHOUT_GENERATION_CONFIG:
         _LOGGER.debug(
             "Model %s does not support speed/emotion/volume controls, dropping %s",
             model,

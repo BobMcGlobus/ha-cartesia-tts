@@ -129,14 +129,14 @@ async def test_per_call_options_override_the_defaults(
     }
 
 
-async def test_controls_are_dropped_on_a_model_without_support(
+async def test_controls_are_dropped_on_a_legacy_model(
     hass: HomeAssistant, mock_client: AsyncMock, config_entry: MockConfigEntry
 ) -> None:
     await setup_entry(hass, config_entry)
     tts_entity = entity(hass)
 
     await tts_entity.async_get_tts_audio(
-        "Hallo.", "de-DE", {ATTR_MODEL: "sonic-latest", CONF_SPEED: 1.4}
+        "Hallo.", "de-DE", {ATTR_MODEL: "sonic-turbo", CONF_SPEED: 1.4}
     )
     assert mock_client.synthesize_bytes.await_args.kwargs["generation_config"] is None
 
