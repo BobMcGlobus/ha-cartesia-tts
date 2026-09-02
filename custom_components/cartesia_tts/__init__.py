@@ -13,10 +13,12 @@ from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import CartesiaAuthError, CartesiaClient, CartesiaError
+from .const import CONF_ADMIN_KEY, CONF_MONTHLY_ALLOWANCE
+from .usage import UsageTracker
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS: list[Platform] = [Platform.TTS]
+PLATFORMS: list[Platform] = [Platform.SENSOR, Platform.TTS]
 
 
 @dataclass(kw_only=True, slots=True)
@@ -24,6 +26,7 @@ class CartesiaData:
     """Runtime data shared by the config entry's platforms."""
 
     client: CartesiaClient
+    usage: UsageTracker
     voices: list[dict[str, Any]] = field(default_factory=list)
 
 
@@ -32,7 +35,11 @@ type CartesiaConfigEntry = ConfigEntry[CartesiaData]
 
 async def async_setup_entry(hass: HomeAssistant, entry: CartesiaConfigEntry) -> bool:
     """Set up Cartesia Sonic TTS from a config entry."""
-    client = CartesiaClient(async_get_clientsession(hass), entry.data[CONF_API_KEY])
+    client = CartesiaClient(
+        async_get_clientsession(hass),
+        entry.data[CONF_API_KEY],
+        admin_key=entry.options.get(CONF_ADMIN_KEY),
+    )
 
     try:
         voices = await client.list_voices()
@@ -48,7 +55,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: CartesiaConfigEntry) -> 
         )
         voices = []
 
-    entry.runtime_data = CartesiaData(client=client, voices=voices)
+    entry.runtime_data = CartesiaData(
+        client=client,
+        usage=UsageTracker(entry.options.get(CONF_MONTHLY_ALLOWANCE)),
+        voices=voices,
+    )
     # No update listener on purpose: the options flow reloads the entry itself
     # (OptionsFlowWithReload), and a listener would clash with the reauth and
     # reconfigure flows calling async_update_reload_and_abort.

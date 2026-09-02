@@ -94,6 +94,36 @@
           "emotion": "Optional. Die ersten sechs Einträge gelten bei Cartesia als am zuverlässigsten.",
           "volume": "1.0 ist die natürliche Lautstärke. Werte unter 1.0 klingen leiser, Richtung Flüstern."
         }
+      },
+      "usage": {
+        "title": "Zuverlässigkeit und Credits",
+        "description": "Cartesia lässt Anfragen scheitern, sobald das Monatskontingent aufgebraucht ist. Eine Fallback-Engine hält Ansagen am Laufen, und die Credit-Sensoren machen das Limit sichtbar, bevor du hineinläufst.",
+        "data": {
+          "fallback_engine": "Ausweich-Sprachausgabe",
+          "monthly_allowance": "Monatliches Credit-Kontingent",
+          "admin_api_key": "Admin-API-Key (optional)"
+        },
+        "data_description": {
+          "fallback_engine": "Wird genutzt, wenn Cartesia nicht erreichbar oder das Kontingent aufgebraucht ist. Leer lassen, um stattdessen einen Fehler zu werfen.",
+          "monthly_allowance": "Im kostenlosen Tarif rund 20.000. 1 Credit entspricht etwa 1 Zeichen. 0 blendet den Sensor für verbleibende Credits aus.",
+          "admin_api_key": "Nur für exakte Verbrauchszahlen von Cartesia nötig. Anlegen unter [play.cartesia.ai/keys/admin]({admin_keys_url}). Ohne ihn wird der Verbrauch aus dem geschätzt, was diese Integration sendet."
+        }
+      }
+    }
+  },
+  "issues": {
+    "quota_exhausted": {
+      "title": "Cartesia hat keine Credits mehr",
+      "description": "Cartesia hat eine Sprachanfrage abgelehnt, weil das Monatskontingent aufgebraucht ist. Sprachausgabe bleibt aus, bis sich das Kontingent erneuert oder der Tarif erweitert wird. Den Verbrauch siehst du auf der Cartesia-Usage-Seite."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "credits_used": {
+        "name": "Verbrauchte Credits"
+      },
+      "credits_remaining": {
+        "name": "Verbleibende Credits"
       }
     }
   }

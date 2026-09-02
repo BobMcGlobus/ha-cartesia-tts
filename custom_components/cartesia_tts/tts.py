@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import AsyncGenerator, Mapping
+from collections.abc import AsyncGenerator, AsyncIterable, Mapping
 from dataclasses import dataclass
 from datetime import timedelta
 from typing import Any, override
@@ -16,9 +16,11 @@ from homeassistant.components.tts import (
     TtsAudioType,
     Voice,
 )
+from homeassistant.components.tts.const import DATA_COMPONENT
 from homeassistant.const import ATTR_MODEL, CONF_MODEL, EntityCategory
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.event import async_track_time_interval
@@ -28,12 +30,14 @@ from .api import (
     CartesiaAuthError,
     CartesiaClient,
     CartesiaError,
+    CartesiaQuotaError,
     build_generation_config,
     wav_header,
 )
 from .const import (
     CARTESIA_TO_HA,
     CONF_EMOTION,
+    CONF_FALLBACK_ENGINE,
     CONF_LANGUAGE,
     CONF_SPEED,
     CONF_STREAMING,
@@ -44,13 +48,51 @@ from .const import (
     DOMAIN,
     FALLBACK_LANGUAGES,
     HA_TO_CARTESIA,
+    ISSUE_QUOTA_EXHAUSTED,
     MANUFACTURER,
+    USAGE_URL,
     VOICES_REFRESH_INTERVAL_HOURS,
 )
+from .usage import UsageTracker
 
 _LOGGER = logging.getLogger(__name__)
 
 PARALLEL_UPDATES = 0
+
+
+class _RecordedMessage:
+    """Forwards a message stream while remembering what went through.
+
+    Two things need the text that Home Assistant streams in: Cartesia, chunk by
+    chunk, and - if Cartesia fails - the fallback engine, which needs it whole.
+    Characters are counted as they are sent, because that is what Cartesia
+    bills, whether or not the request ends up succeeding.
+    """
+
+    def __init__(self, source: AsyncIterable[str], usage: UsageTracker) -> None:
+        """Wrap the message generator Home Assistant handed us."""
+        self._source = source
+        self._usage = usage
+        self.text = ""
+
+    async def stream(self) -> AsyncGenerator[str]:
+        """Yield the chunks, recording them on the way past."""
+        async for chunk in self._source:
+            self._record(chunk)
+            yield chunk
+
+    async def drain(self) -> str:
+        """Collect whatever is left, for handing a whole message to a fallback."""
+        try:
+            async for chunk in self._source:
+                self._record(chunk)
+        except Exception as err:  # noqa: BLE001 - a dead stream must not mask the real error
+            _LOGGER.debug("Could not drain the message stream: %s", err)
+        return self.text
+
+    def _record(self, chunk: str) -> None:
+        self.text += chunk
+        self._usage.async_add_characters(len(chunk))
 
 
 @dataclass(frozen=True, slots=True)
@@ -221,40 +263,158 @@ class CartesiaTTSEntity(TextToSpeechEntity):
                 language=request.language,
                 generation_config=request.generation_config,
             )
-        except CartesiaAuthError as err:
-            self._entry.async_start_reauth(self.hass)
-            raise HomeAssistantError(f"Cartesia rejected the API key: {err}") from err
         except CartesiaError as err:
+            self._handle_error(err)
+            if (fallback := await self._async_fallback(message, language)) is not None:
+                return fallback
             raise HomeAssistantError(f"Cartesia TTS request failed: {err}") from err
+
+        self._entry.runtime_data.usage.async_add_characters(len(message))
+        self._clear_quota_issue()
         return "mp3", audio
 
     @override
     async def async_stream_tts_audio(
         self, request: TTSAudioRequest
     ) -> TTSAudioResponse:
-        """Stream audio while the message is still arriving."""
+        """Stream audio while the message is still arriving.
+
+        The first chunk is awaited before the response is handed back, so a
+        failure that happens before any audio exists can still be answered with
+        the fallback engine. Emitting the WAV header first would commit Home
+        Assistant to a stream that then simply stops - audible as nothing at
+        all, with only a log line to show for it.
+        """
         if not self._entry.options.get(CONF_STREAMING, True):
             return await super().async_stream_tts_audio(request)
-        return TTSAudioResponse("wav", self._stream_audio(request))
 
-    async def _stream_audio(self, request: TTSAudioRequest) -> AsyncGenerator[bytes]:
-        """Yield a WAV header followed by Cartesia's raw PCM chunks."""
-        resolved = self._resolve(request.options, request.language)
-        yield wav_header()
+        recorded = _RecordedMessage(request.message_gen, self._entry.runtime_data.usage)
+        chunks = self._cartesia_pcm(request, recorded)
         try:
-            async for chunk in self._client.synthesize_stream(
-                model=resolved.model,
-                transcript_gen=request.message_gen,
-                voice_id=resolved.voice_id,
-                language=resolved.language,
-                generation_config=resolved.generation_config,
-            ):
-                yield chunk
-        except CartesiaAuthError as err:
-            self._entry.async_start_reauth(self.hass)
-            raise HomeAssistantError(f"Cartesia rejected the API key: {err}") from err
+            first = await anext(chunks)
+        except StopAsyncIteration:
+            await chunks.aclose()
+            return await self._async_fallback_response(
+                CartesiaError("Cartesia returned no audio"), recorded, request.language
+            )
         except CartesiaError as err:
+            await chunks.aclose()
+            return await self._async_fallback_response(err, recorded, request.language)
+
+        self._clear_quota_issue()
+        return TTSAudioResponse("wav", self._wav_stream(first, chunks))
+
+    async def _cartesia_pcm(
+        self, request: TTSAudioRequest, recorded: _RecordedMessage
+    ) -> AsyncGenerator[bytes]:
+        """Yield raw PCM from Cartesia, without a container header."""
+        resolved = self._resolve(request.options, request.language)
+        async for chunk in self._client.synthesize_stream(
+            model=resolved.model,
+            transcript_gen=recorded.stream(),
+            voice_id=resolved.voice_id,
+            language=resolved.language,
+            generation_config=resolved.generation_config,
+        ):
+            yield chunk
+
+    async def _wav_stream(
+        self, first: bytes, chunks: AsyncGenerator[bytes]
+    ) -> AsyncGenerator[bytes]:
+        """Yield the WAV header, then the audio that is already flowing."""
+        yield wav_header()
+        yield first
+        try:
+            async for chunk in chunks:
+                yield chunk
+        except CartesiaError as err:
+            # Playback has already started, so there is no switching engines
+            # now; make sure it is at least loud in the log.
+            self._handle_error(err)
             raise HomeAssistantError(f"Cartesia TTS stream failed: {err}") from err
+
+    async def _async_fallback_response(
+        self, err: CartesiaError, recorded: _RecordedMessage, language: str
+    ) -> TTSAudioResponse:
+        """Answer a failed stream from the fallback engine, or give up loudly."""
+        self._handle_error(err)
+        message = await recorded.drain()
+        if (fallback := await self._async_fallback(message, language)) is not None:
+            extension, data = fallback
+
+            async def single_chunk() -> AsyncGenerator[bytes]:
+                yield data
+
+            return TTSAudioResponse(extension, single_chunk())
+        raise HomeAssistantError(f"Cartesia TTS stream failed: {err}")
+
+    async def _async_fallback(
+        self, message: str, language: str
+    ) -> tuple[str, bytes] | None:
+        """Synthesize through the configured fallback TTS entity.
+
+        Returns None when no fallback is configured or it cannot be used, so
+        the caller raises the original Cartesia error instead.
+        """
+        engine_id = self._entry.options.get(CONF_FALLBACK_ENGINE)
+        if not engine_id or engine_id == self.entity_id:
+            return None
+        component = self.hass.data.get(DATA_COMPONENT)
+        engine = component.get_entity(engine_id) if component else None
+        if engine is None:
+            _LOGGER.error("Fallback TTS engine %s is not available", engine_id)
+            return None
+
+        # The fallback has its own voices and options; passing Cartesia's
+        # through would mean nothing to it, so it runs on its own defaults.
+        supported = engine.supported_languages or []
+        fallback_language = (
+            language if language in supported else engine.default_language
+        )
+        try:
+            extension, data = await engine.async_internal_get_tts_audio(
+                message, fallback_language, {}
+            )
+        except Exception as fallback_err:  # noqa: BLE001 - never mask the Cartesia error
+            _LOGGER.error(
+                "Fallback TTS engine %s failed as well: %s", engine_id, fallback_err
+            )
+            return None
+
+        if not data or not extension:
+            _LOGGER.error("Fallback TTS engine %s returned no audio", engine_id)
+            return None
+
+        _LOGGER.warning(
+            "Cartesia failed, spoke through the fallback engine %s instead", engine_id
+        )
+        return extension, data
+
+    @callback
+    def _handle_error(self, err: CartesiaError) -> None:
+        """Make a failure visible: reauth, a repair issue, or at least a log."""
+        if isinstance(err, CartesiaQuotaError):
+            _LOGGER.error("Cartesia is out of credits: %s", err)
+            ir.async_create_issue(
+                self.hass,
+                DOMAIN,
+                ISSUE_QUOTA_EXHAUSTED,
+                is_fixable=False,
+                severity=ir.IssueSeverity.ERROR,
+                translation_key=ISSUE_QUOTA_EXHAUSTED,
+                learn_more_url=USAGE_URL,
+            )
+            return
+        if isinstance(err, CartesiaAuthError):
+            _LOGGER.error("Cartesia rejected the API key: %s", err)
+            self._entry.async_start_reauth(self.hass)
+            return
+        _LOGGER.error("Cartesia TTS request failed: %s", err)
+
+    @callback
+    def _clear_quota_issue(self) -> None:
+        """Drop the out-of-credits repair once synthesis works again."""
+        ir.async_delete_issue(self.hass, DOMAIN, ISSUE_QUOTA_EXHAUSTED)
 
     def _resolve(
         self, options: dict[str, Any] | None, language: str | None

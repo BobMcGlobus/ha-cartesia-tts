@@ -11,7 +11,9 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.cartesia_tts.const import (
     CONF_EMOTION,
+    CONF_FALLBACK_ENGINE,
     CONF_LANGUAGE,
+    CONF_MONTHLY_ALLOWANCE,
     CONF_SPEED,
     CONF_STREAMING,
     CONF_VOICE,
@@ -41,7 +43,10 @@ OPTIONS: dict[str, Any] = {
     CONF_VOLUME: 1.0,
     CONF_EMOTION: "calm",
     CONF_STREAMING: False,
+    CONF_MONTHLY_ALLOWANCE: 20000,
 }
+
+FALLBACK_ENTITY_ID = "tts.backup_engine"
 
 
 @pytest.fixture(autouse=True)
@@ -82,6 +87,20 @@ def _entry(options: dict[str, Any]) -> MockConfigEntry:
 def config_entry() -> MockConfigEntry:
     """A configured entry with a German default voice."""
     return _entry(dict(OPTIONS))
+
+
+@pytest.fixture
+def config_entry_streaming() -> MockConfigEntry:
+    """An entry with WebSocket streaming on and a fallback engine configured."""
+    return _entry(
+        {**OPTIONS, CONF_STREAMING: True, CONF_FALLBACK_ENGINE: FALLBACK_ENTITY_ID}
+    )
+
+
+@pytest.fixture
+def config_entry_with_fallback() -> MockConfigEntry:
+    """A non-streaming entry with a fallback engine configured."""
+    return _entry({**OPTIONS, CONF_FALLBACK_ENGINE: FALLBACK_ENTITY_ID})
 
 
 @pytest.fixture

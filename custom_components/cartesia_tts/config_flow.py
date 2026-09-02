@@ -18,6 +18,8 @@ from homeassistant.const import CONF_API_KEY, CONF_MODEL
 from homeassistant.core import callback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.selector import (
+    EntitySelector,
+    EntitySelectorConfig,
     NumberSelector,
     NumberSelectorConfig,
     NumberSelectorMode,
@@ -33,17 +35,22 @@ from homeassistant.helpers.selector import (
 from . import CartesiaConfigEntry
 from .api import CartesiaAuthError, CartesiaClient, CartesiaConnectionError
 from .const import (
+    CONF_ADMIN_KEY,
     CONF_EMOTION,
+    CONF_FALLBACK_ENGINE,
     CONF_LANGUAGE,
+    CONF_MONTHLY_ALLOWANCE,
     CONF_SPEED,
     CONF_STREAMING,
     CONF_VOICE,
     CONF_VOLUME,
     DEFAULT_LANGUAGE,
     DEFAULT_MODEL,
+    DEFAULT_MONTHLY_ALLOWANCE,
     DOMAIN,
     EMOTIONS,
     EMOTIONS_PRIMARY,
+    MAX_MONTHLY_ALLOWANCE,
     MODELS,
     NAME,
     SPEED_DEFAULT,
@@ -58,6 +65,7 @@ from .tts import derive_languages
 _LOGGER = logging.getLogger(__name__)
 
 API_KEYS_URL = "https://play.cartesia.ai/keys"
+ADMIN_KEYS_URL = "https://play.cartesia.ai/keys/admin"
 
 API_KEY_SELECTOR = TextSelector(TextSelectorConfig(type=TextSelectorType.PASSWORD))
 MODEL_SELECTOR = SelectSelector(
@@ -66,6 +74,12 @@ MODEL_SELECTOR = SelectSelector(
 SPEED_SELECTOR = NumberSelector(
     NumberSelectorConfig(
         min=SPEED_MIN, max=SPEED_MAX, step=0.05, mode=NumberSelectorMode.SLIDER
+    )
+)
+FALLBACK_SELECTOR = EntitySelector(EntitySelectorConfig(domain="tts"))
+ALLOWANCE_SELECTOR = NumberSelector(
+    NumberSelectorConfig(
+        min=0, max=MAX_MONTHLY_ALLOWANCE, step=1, mode=NumberSelectorMode.BOX
     )
 )
 VOLUME_SELECTOR = NumberSelector(
@@ -232,6 +246,7 @@ class CartesiaConfigFlow(ConfigFlow, domain=DOMAIN):
             self._options.update(user_input)
             if not user_input.get(CONF_EMOTION):
                 self._options.pop(CONF_EMOTION, None)
+            self._options.setdefault(CONF_MONTHLY_ALLOWANCE, DEFAULT_MONTHLY_ALLOWANCE)
             data = {CONF_API_KEY: self._api_key}
             if self.source == SOURCE_RECONFIGURE:
                 return self.async_update_reload_and_abort(
@@ -386,10 +401,10 @@ class CartesiaOptionsFlow(OptionsFlowWithReload):
     ) -> ConfigFlowResult:
         """Pick the default voice, speed and emotion for the chosen language."""
         if user_input is not None:
-            options = {**self._options, **user_input}
+            self._options = {**self._options, **user_input}
             if not user_input.get(CONF_EMOTION):
-                options.pop(CONF_EMOTION, None)
-            return self.async_create_entry(data=options)
+                self._options.pop(CONF_EMOTION, None)
+            return await self.async_step_usage()
 
         language = self._options.get(CONF_LANGUAGE, DEFAULT_LANGUAGE)
         return self.async_show_form(
@@ -435,3 +450,43 @@ class CartesiaOptionsFlow(OptionsFlowWithReload):
             return []
         entry.runtime_data.voices = voices
         return voices
+
+    async def async_step_usage(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Configure the fallback engine and how credits are tracked."""
+        if user_input is not None:
+            options = {**self._options, **user_input}
+            options[CONF_MONTHLY_ALLOWANCE] = int(
+                user_input.get(CONF_MONTHLY_ALLOWANCE) or 0
+            )
+            for key in (CONF_FALLBACK_ENGINE, CONF_ADMIN_KEY):
+                if not user_input.get(key):
+                    options.pop(key, None)
+            return self.async_create_entry(data=options)
+
+        current = self.config_entry.options
+        return self.async_show_form(
+            step_id="usage",
+            data_schema=vol.Schema(
+                {
+                    vol.Optional(
+                        CONF_FALLBACK_ENGINE,
+                        description={
+                            "suggested_value": current.get(CONF_FALLBACK_ENGINE)
+                        },
+                    ): FALLBACK_SELECTOR,
+                    vol.Required(
+                        CONF_MONTHLY_ALLOWANCE,
+                        default=current.get(
+                            CONF_MONTHLY_ALLOWANCE, DEFAULT_MONTHLY_ALLOWANCE
+                        ),
+                    ): ALLOWANCE_SELECTOR,
+                    vol.Optional(
+                        CONF_ADMIN_KEY,
+                        description={"suggested_value": current.get(CONF_ADMIN_KEY)},
+                    ): API_KEY_SELECTOR,
+                }
+            ),
+            description_placeholders={"admin_keys_url": ADMIN_KEYS_URL},
+        )

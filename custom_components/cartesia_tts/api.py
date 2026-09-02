@@ -11,6 +11,7 @@ Schema reference (verified 2026-07 against docs.cartesia.ai):
   * POST /tts/bytes    : mp3/wav/raw output
   * WSS /tts/websocket : raw PCM only
   * speed/emotion      : ``generation_config`` (not ``experimental_controls``)
+  * GET /usage/credits : admin key only, reports consumption without a balance
 """
 
 from __future__ import annotations
@@ -23,7 +24,8 @@ import logging
 import struct
 import uuid
 from collections.abc import AsyncGenerator, AsyncIterable
-from typing import Any
+from datetime import UTC, datetime
+from typing import Any, Final
 
 import aiohttp
 
@@ -65,6 +67,53 @@ class CartesiaAuthError(CartesiaError):
 
 class CartesiaConnectionError(CartesiaError):
     """Cartesia was unreachable or kept failing."""
+
+
+class CartesiaQuotaError(CartesiaError):
+    """The account is out of credits for this billing period."""
+
+
+# Cartesia documents no status code for an exhausted allowance, only that
+# "requests that would exceed your allotment fail". These words in an error body
+# separate a spent quota from a bad key (403) or a rate limit (429). Deliberately
+# narrow: "limit" and "exceeded" alone also appear in rate-limit messages.
+QUOTA_HINTS: Final = (
+    "credit",
+    "quota",
+    "allotment",
+    "allowance",
+    "insufficient",
+    "balance",
+    "payment required",
+    "billing",
+    "upgrade your plan",
+    "out of funds",
+)
+
+
+def _looks_like_quota(detail: str) -> bool:
+    """Return True when an error body reads like an exhausted allowance."""
+    lowered = detail.lower()
+    return any(hint in lowered for hint in QUOTA_HINTS)
+
+
+def classify_status(status: int, detail: str) -> CartesiaError | None:
+    """Map an HTTP status and error body onto a typed error, or None if fine."""
+    if status < 400:
+        return None
+    if status == 402:
+        return CartesiaQuotaError(f"Cartesia is out of credits: {detail}")
+    if status in (401, 403):
+        if status == 403 and _looks_like_quota(detail):
+            return CartesiaQuotaError(f"Cartesia is out of credits: {detail}")
+        return CartesiaAuthError(f"Cartesia rejected the API key: {detail}")
+    if status == 429:
+        if _looks_like_quota(detail):
+            return CartesiaQuotaError(f"Cartesia is out of credits: {detail}")
+        return CartesiaConnectionError(f"Cartesia rate limited the request: {detail}")
+    if status >= 500:
+        return CartesiaConnectionError(f"Cartesia failed with HTTP {status}: {detail}")
+    return CartesiaError(f"Cartesia rejected the request (HTTP {status}): {detail}")
 
 
 MP3_OUTPUT_FORMAT: dict[str, Any] = {
@@ -241,15 +290,31 @@ def _retry_after(header: str | None) -> float:
 class CartesiaClient:
     """Minimal async client covering the endpoints this integration needs."""
 
-    def __init__(self, session: aiohttp.ClientSession, api_key: str) -> None:
-        """Initialize the client with a shared Home Assistant session."""
+    def __init__(
+        self,
+        session: aiohttp.ClientSession,
+        api_key: str,
+        admin_key: str | None = None,
+    ) -> None:
+        """Initialize the client with a shared Home Assistant session.
+
+        ``admin_key`` is optional and only used for /usage/credits, which
+        Cartesia restricts to admin keys (``sk_car_admin_...``).
+        """
         self._session = session
         self._api_key = api_key
+        self._admin_key = admin_key
 
     @property
-    def _rest_headers(self) -> dict[str, str]:
+    def has_admin_key(self) -> bool:
+        """Return whether usage figures can be read from the API."""
+        return bool(self._admin_key)
+
+    def _rest_headers(self, admin: bool = False) -> dict[str, str]:
+        """Build REST headers, optionally with the admin key."""
+        key = self._admin_key if admin else self._api_key
         return {
-            "Authorization": f"Bearer {self._api_key}",
+            "Authorization": f"Bearer {key}",
             "Cartesia-Version": CARTESIA_VERSION,
         }
 
@@ -282,6 +347,23 @@ class CartesiaClient:
 
         _LOGGER.debug("Loaded %s Cartesia voices", len(voices))
         return voices
+
+    async def usage_credits(self, start: datetime, end: datetime) -> int:
+        """Return the credits consumed in a window, via the admin API.
+
+        The endpoint reports consumption only - Cartesia exposes no remaining
+        balance or plan allowance - so the caller subtracts from its own
+        configured allowance.
+        """
+        if not self._admin_key:
+            raise CartesiaAuthError("A Cartesia admin API key is required for usage")
+
+        payload = await self._get_json(
+            "/usage/credits",
+            {"start_ts": _rfc3339(start), "end_ts": _rfc3339(end)},
+            admin=True,
+        )
+        return _sum_credits(payload)
 
     async def synthesize_bytes(
         self,
@@ -455,21 +537,25 @@ class CartesiaClient:
                     return
                 case "error":
                     detail = payload.get("message") or payload.get("title") or "unknown"
-                    if payload.get("status_code") in (401, 403):
-                        raise CartesiaAuthError(detail)
-                    raise CartesiaError(f"Cartesia stream error: {detail}")
+                    status = payload.get("status_code") or 400
+                    _LOGGER.error(
+                        "Cartesia stream error (status %s): %s", status, detail
+                    )
+                    raise classify_status(status, detail) or CartesiaError(detail)
                 case _:
                     # timestamps / flush_done and friends are not used here.
                     continue
 
-    async def _get_json(self, path: str, params: dict[str, Any]) -> Any:
+    async def _get_json(
+        self, path: str, params: dict[str, Any], admin: bool = False
+    ) -> Any:
         """GET a JSON endpoint with one retry on rate limits and 5xx."""
         url = f"{API_BASE}{path}"
         for attempt in range(2):
             try:
                 async with self._session.get(
                     url,
-                    headers=self._rest_headers,
+                    headers=self._rest_headers(admin=admin),
                     params=params,
                     timeout=aiohttp.ClientTimeout(total=REQUEST_TIMEOUT),
                 ) as response:
@@ -492,7 +578,7 @@ class CartesiaClient:
             try:
                 async with self._session.post(
                     url,
-                    headers=self._rest_headers,
+                    headers=self._rest_headers(),
                     json=body,
                     timeout=aiohttp.ClientTimeout(total=REQUEST_TIMEOUT),
                 ) as response:
@@ -529,11 +615,37 @@ class CartesiaClient:
         """Translate an HTTP error into a typed Cartesia exception."""
         if response.status < 400:
             return
-        detail = (await response.text())[:200]
-        if response.status in (401, 403):
-            raise CartesiaAuthError(f"Cartesia rejected the API key: {detail}")
-        if response.status == 429 or response.status >= 500:
-            raise CartesiaConnectionError(
-                f"{path} failed with HTTP {response.status}: {detail}"
-            )
-        raise CartesiaError(f"{path} failed with HTTP {response.status}: {detail}")
+        detail = (await response.text())[:300]
+        # Logged here rather than only raised: Cartesia does not document its
+        # error codes, so the real status and body are what makes a report
+        # actionable.
+        _LOGGER.error("Cartesia %s returned HTTP %s: %s", path, response.status, detail)
+        if (error := classify_status(response.status, detail)) is not None:
+            raise error
+
+
+def _rfc3339(moment: datetime) -> str:
+    """Format a datetime the way the usage API expects it."""
+    return moment.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _sum_credits(payload: Any) -> int:
+    """Total the credits in a usage response.
+
+    Without ``group_by`` the response is a flat list of buckets; the sum over
+    the requested window is what a monthly counter needs.
+    """
+    if not isinstance(payload, dict):
+        return 0
+    total = 0
+    for entry in payload.get("data") or []:
+        if not isinstance(entry, dict):
+            continue
+        if (credits := entry.get("credits")) is not None:
+            total += int(credits)
+            continue
+        # Grouped responses nest the numbers one level deeper.
+        for bucket in entry.get("buckets") or []:
+            if isinstance(bucket, dict) and bucket.get("credits") is not None:
+                total += int(bucket["credits"])
+    return total

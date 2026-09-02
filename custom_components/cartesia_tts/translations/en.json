@@ -94,6 +94,36 @@
           "emotion": "Optional. The first six entries are the ones Cartesia considers most reliable.",
           "volume": "1.0 is the natural level. Values below 1.0 give a quieter, whisper-like delivery."
         }
+      },
+      "usage": {
+        "title": "Reliability and credits",
+        "description": "Cartesia fails requests once the monthly allowance is spent. A fallback engine keeps announcements working, and the credit sensors make the limit visible before you hit it.",
+        "data": {
+          "fallback_engine": "Fallback text-to-speech engine",
+          "monthly_allowance": "Monthly credit allowance",
+          "admin_api_key": "Admin API key (optional)"
+        },
+        "data_description": {
+          "fallback_engine": "Used when Cartesia cannot be reached or is out of credits. Leave empty to raise an error instead.",
+          "monthly_allowance": "Roughly 20,000 on the free tier. 1 credit is about 1 character. Set to 0 to hide the remaining-credits sensor.",
+          "admin_api_key": "Only needed for exact usage figures from Cartesia. Create one at [play.cartesia.ai/keys/admin]({admin_keys_url}). Without it, consumption is estimated from what this integration sends."
+        }
+      }
+    }
+  },
+  "issues": {
+    "quota_exhausted": {
+      "title": "Cartesia is out of credits",
+      "description": "Cartesia rejected a speech request because the monthly allowance is spent. Speech stays unavailable until the allowance renews or the plan is upgraded. Check your consumption on the Cartesia usage page."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "credits_used": {
+        "name": "Credits used"
+      },
+      "credits_remaining": {
+        "name": "Credits remaining"
       }
     }
   }

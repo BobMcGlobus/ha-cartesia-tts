@@ -20,6 +20,8 @@ per-call control over voice, speed, emotion and volume.
 | Per-call options | `voice`, `model`, `speed`, `emotion`, `volume` via `tts.speak` |
 | Inline tags | `<volume>`, `<speed>`, `<emotion>`, `<break>`, `<spell>` survive streaming intact |
 | Streaming | WebSocket streaming so Assist starts speaking before the sentence is finished |
+| Credit usage | Sensors for credits used and remaining, so the free tier stops running out unannounced |
+| Fallback engine | Hands the announcement to another TTS engine when Cartesia is unreachable or out of credits |
 | Key rotation | Re-auth and reconfigure flows, no reinstall needed |
 
 Defaults to **Sonic 3.6**, Cartesia's model released on 27 August 2026: 44 languages (Sonic 3.5's
@@ -50,6 +52,9 @@ The config flow has three steps:
 2. **Model and language** — `sonic-3.6` (recommended), `sonic-3.5`, `sonic-3` or `sonic-latest`,
    plus the default language and whether to stream
 3. **Default voice** — the voices available for that language, plus default speed, volume and emotion
+
+**Configure** adds a third step for reliability and credits: a fallback TTS engine, your monthly
+credit allowance and an optional admin API key.
 
 Everything except the API key can be changed later under **Configure**; the API key itself can be
 replaced under **Reconfigure** or via the re-auth prompt that appears when a key stops working.
@@ -154,6 +159,70 @@ that would exceed your allotment fail until the next renewal or until you upgrad
 speech simply stops working until the month rolls over. You can see consumption on the
 [usage page](https://play.cartesia.ai/usage).
 
+## Credit usage
+
+The integration adds two sensors so the allowance stops being invisible:
+
+| Entity | Meaning |
+|---|---|
+| `sensor.cartesia_credits_used` | Credits consumed in the current calendar month |
+| `sensor.cartesia_credits_remaining` | Monthly allowance minus consumption |
+
+By default the figure is a **local estimate**: Cartesia bills roughly one credit per character, and
+the integration counts the characters it sends. That is accurate as long as Home Assistant is the
+only thing using the key.
+
+For exact numbers — including usage from anywhere else — put a **Cartesia admin API key**
+(`sk_car_admin_...`, from [play.cartesia.ai/keys/admin](https://play.cartesia.ai/keys/admin)) into
+the reliability step. The integration then polls `GET /usage/credits` every 30 minutes and the
+sensor's `source` attribute switches from `local` to `api`. That endpoint only accepts admin keys,
+which is why the normal key cannot do it.
+
+Two limitations worth knowing:
+
+- Cartesia's API reports **consumption only** — there is no remaining balance or plan allowance to
+  read — so "remaining" is always your configured allowance minus consumption. The default is
+  20,000, the rough free-tier figure; change it under **Configure** if your plan differs.
+- Consumption is bucketed by **calendar month**. If your plan renews on some other day, the numbers
+  will be offset around the renewal date.
+
+Warn yourself before the wall:
+
+```yaml
+automation:
+  - alias: Cartesia credits nearly gone
+    triggers:
+      - trigger: numeric_state
+        entity_id: sensor.cartesia_credits_remaining
+        below: 2000
+    actions:
+      - action: notify.persistent_notification
+        data:
+          message: "Cartesia has under 2000 credits left this month."
+```
+
+## When Cartesia fails
+
+Speech can stop for two reasons: the network is down, or the monthly allowance is spent. Cartesia
+answers the second case by rejecting requests — *"requests that would exceed your allotment fail
+until the next renewal or until you upgrade your plan"* — so neither case should be quiet.
+
+- **A repair issue** appears under Settings when Cartesia reports the allowance is spent, and
+  disappears by itself once synthesis succeeds again. An exhausted allowance is deliberately *not*
+  treated as a bad API key, so it does not trigger a spurious re-authentication prompt.
+- **Errors are logged at error level** with the HTTP status and Cartesia's own message. Cartesia
+  does not document its error codes, so if speech stops and the log shows a status this integration
+  misreads, that log line is exactly what an issue report needs.
+- **A fallback engine** — configured under **Configure** — takes over when Cartesia cannot deliver.
+  Anything that appears as a `tts` entity works: Piper, Google Translate, Home Assistant Cloud. It
+  runs on its own defaults, since Cartesia's voice and emotion options mean nothing to it, and it
+  falls back to its own default language if it does not support the requested one.
+
+The streaming path waits for Cartesia's first audio chunk before it commits Home Assistant to a
+response. That is what makes the fallback possible at all: a failure that happens before any audio
+exists can still be answered by another engine, instead of producing a stream that simply stops
+mid-sentence with nothing but a log line to show for it.
+
 ## Troubleshooting
 
 Enable debug logging:
@@ -170,6 +239,9 @@ logger:
   with the stored default voice and retries the voice list every hour.
 - **`No Cartesia voice configured`** → set a default voice under Configure, or pass `voice` in the
   service call.
+- **Speech stopped working entirely** → check `sensor.cartesia_credits_remaining` and Settings →
+  Repairs. If the allowance is spent, the fix is a new billing period or a bigger plan; configure a
+  fallback engine to keep announcements working in the meantime.
 
 ## Development
 

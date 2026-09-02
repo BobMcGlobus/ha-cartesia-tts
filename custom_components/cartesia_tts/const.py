@@ -23,6 +23,24 @@ CONF_SPEED: Final = "speed"
 CONF_EMOTION: Final = "emotion"
 CONF_VOLUME: Final = "volume"
 CONF_STREAMING: Final = "streaming"
+CONF_ADMIN_KEY: Final = "admin_api_key"
+CONF_MONTHLY_ALLOWANCE: Final = "monthly_allowance"
+CONF_FALLBACK_ENGINE: Final = "fallback_engine"
+
+# Credit usage.
+UNIT_CREDITS: Final = "credits"
+ATTR_SOURCE: Final = "source"
+ATTR_PERIOD: Final = "period"
+ATTR_ALLOWANCE: Final = "allowance"
+# Cartesia's free tier is about 20,000 credits a month; the value is editable
+# because paid plans differ and Cartesia exposes no allowance through the API.
+DEFAULT_MONTHLY_ALLOWANCE: Final = 20000
+MAX_MONTHLY_ALLOWANCE: Final = 100_000_000
+USAGE_REFRESH_INTERVAL_MINUTES: Final = 30
+
+# Repair issue raised when Cartesia reports the allowance is spent.
+ISSUE_QUOTA_EXHAUSTED: Final = "quota_exhausted"
+USAGE_URL: Final = "https://play.cartesia.ai/usage"
 
 MODELS: Final = ["sonic-3.6", "sonic-3.5", "sonic-3", "sonic-latest"]
 DEFAULT_MODEL: Final = "sonic-3.6"

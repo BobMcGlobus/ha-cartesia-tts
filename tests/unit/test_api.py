@@ -10,6 +10,7 @@ import asyncio
 import base64
 import json
 import struct
+from datetime import UTC, datetime
 from typing import Any
 
 import aiohttp
@@ -20,6 +21,7 @@ from cartesia_tts.api import (
     CartesiaClient,
     CartesiaConnectionError,
     CartesiaError,
+    CartesiaQuotaError,
     build_generation_config,
     normalize_emotion,
     normalize_speed,
@@ -623,3 +625,118 @@ def test_stream_uses_api_key_header_and_version_query() -> None:
 def test_generation_config_survives_a_future_model() -> None:
     """The gate is a deny-list, so an unknown newer Sonic keeps its controls."""
     assert build_generation_config(volume=0.7, model="sonic-4") == {"volume": 0.7}
+
+
+# ------------------------------------------------------- error classification --
+@pytest.mark.parametrize(
+    ("status", "detail", "expected"),
+    [
+        # Payment Required is unambiguous.
+        (402, "", CartesiaQuotaError),
+        # 401 is always a key problem.
+        (401, "no credits left", CartesiaAuthError),
+        # 403 depends on the body: quota wording versus a plain rejection.
+        (403, "insufficient credits for this request", CartesiaQuotaError),
+        (403, "forbidden", CartesiaAuthError),
+        # 429 is a rate limit unless the body says otherwise.
+        (429, "rate limit exceeded, slow down", CartesiaConnectionError),
+        (429, "monthly allowance spent", CartesiaQuotaError),
+        (500, "boom", CartesiaConnectionError),
+        (400, "bad voice id", CartesiaError),
+    ],
+)
+def test_classify_status(status: int, detail: str, expected: type[Exception]) -> None:
+    error = api.classify_status(status, detail)
+    assert type(error) is expected
+
+
+def test_classify_status_passes_success_through() -> None:
+    assert api.classify_status(200, "") is None
+
+
+def test_quota_error_is_not_mistaken_for_auth() -> None:
+    """An exhausted allowance must not trigger a re-authentication prompt."""
+    error = api.classify_status(402, "out of credits")
+    assert isinstance(error, CartesiaQuotaError)
+    assert not isinstance(error, CartesiaAuthError)
+
+
+def test_rate_limit_wording_does_not_count_as_quota() -> None:
+    assert not api._looks_like_quota("Rate limit exceeded. Too many requests.")
+    assert api._looks_like_quota("You have insufficient credits remaining.")
+
+
+# -------------------------------------------------------------- usage credits --
+def test_usage_credits_sums_flat_buckets() -> None:
+    session = FakeSession(
+        [
+            FakeResponse(
+                200,
+                {
+                    "data": [
+                        {"start_ts": "x", "end_ts": "y", "credits": 1200},
+                        {"start_ts": "y", "end_ts": "z", "credits": 300},
+                    ]
+                },
+            )
+        ]
+    )
+    client = CartesiaClient(session, "k", admin_key="sk_car_admin_test")
+    used = run(
+        client.usage_credits(
+            datetime(2026, 9, 1, tzinfo=UTC), datetime(2026, 9, 30, tzinfo=UTC)
+        )
+    )
+
+    assert used == 1500
+    # The admin key is what authenticates this call, not the normal key.
+    assert session.calls[0][3]["Authorization"] == "Bearer sk_car_admin_test"
+    assert session.calls[0][2]["start_ts"] == "2026-09-01T00:00:00Z"
+
+
+def test_usage_credits_sums_grouped_buckets() -> None:
+    session = FakeSession(
+        [
+            FakeResponse(
+                200,
+                {
+                    "group_by": "model",
+                    "data": [
+                        {
+                            "id": "sonic-3.6",
+                            "buckets": [{"credits": 10}, {"credits": 5}],
+                        },
+                        {"id": "sonic-3", "buckets": [{"credits": 2}]},
+                    ],
+                },
+            )
+        ]
+    )
+    client = CartesiaClient(session, "k", admin_key="admin")
+    assert (
+        run(
+            client.usage_credits(
+                datetime(2026, 9, 1, tzinfo=UTC), datetime(2026, 9, 2, tzinfo=UTC)
+            )
+        )
+        == 17
+    )
+
+
+def test_usage_credits_without_an_admin_key() -> None:
+    client = CartesiaClient(FakeSession([]), "k")
+    assert client.has_admin_key is False
+    with pytest.raises(CartesiaAuthError):
+        run(
+            client.usage_credits(
+                datetime(2026, 9, 1, tzinfo=UTC), datetime(2026, 9, 2, tzinfo=UTC)
+            )
+        )
+
+
+def test_normal_requests_keep_using_the_normal_key() -> None:
+    session = FakeSession([FakeResponse(200, {"data": [], "has_more": False})])
+    run(
+        CartesiaClient(session, "sk_car_normal", admin_key="sk_car_admin").list_voices()
+    )
+    assert session.calls[0][3]["Authorization"] == "Bearer sk_car_normal"
