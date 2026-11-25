@@ -13,19 +13,32 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - uses: home-assistant/actions/hassfest@master
+      # The same invocation the Marketplace catalog (hacs/default) runs on a
+      # new submission, so this job fails wherever that one would.
+      - name: Run hassfest
+        run: |
+          set -o pipefail
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE/custom_components/cartesia_tts":/github/workspace/custom_components/cartesia_tts \
+            ghcr.io/home-assistant/hassfest:latest | tee /tmp/hassfest.log
+      # Hassfest only warns about custom integrations, but the catalog fails new
+      # additions on brand-image warnings. Every warning is held to that bar, so
+      # a submission never finds one first.
+      - name: Fail on hassfest warnings
+        run: |
+          if grep -F "[WARNING]" /tmp/hassfest.log; then exit 1; fi
 
   hacs:
     name: HACS
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+      # No ignore key: the catalog runs this action without one and requires a
+      # link to a run that passed the same way. Brand images now come from
+      # custom_components/cartesia_tts/brand/ (Home Assistant 2026.3+).
       - uses: hacs/action@main
         with:
           category: integration
-          # The domain is not in Home Assistant's brands repository, which only
-          # accepts core integrations.
-          ignore: brands
 
   lint:
     name: Lint

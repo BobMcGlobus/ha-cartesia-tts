@@ -97,10 +97,40 @@ def _looks_like_quota(detail: str) -> bool:
     return any(hint in lowered for hint in QUOTA_HINTS)
 
 
-def classify_status(status: int, detail: str) -> CartesiaError | None:
-    """Map an HTTP status and error body onto a typed error, or None if fine."""
+# Machine-readable codes in Cartesia's structured error body, documented for
+# Cartesia-Version 2026-03-01 and newer. The HTTP status that accompanies them is
+# not documented, so the code is checked first and the status is the fallback.
+ERROR_CODES_QUOTA: Final = frozenset({"quota_exceeded"})
+ERROR_CODES_RETRYABLE: Final = frozenset({"concurrency_limited"})
+
+
+def parse_error_body(raw: str) -> tuple[str | None, str]:
+    """Return ``(error_code, message)`` from a Cartesia error body.
+
+    The documented shape is ``{"error_code", "title", "message", "request_id"}``;
+    ``error_code`` may be null, and older API versions answered in plain text.
+    """
+    try:
+        payload = json.loads(raw)
+    except ValueError:
+        return None, raw
+    if not isinstance(payload, dict):
+        return None, raw
+    code = payload.get("error_code")
+    message = payload.get("message") or payload.get("title") or raw
+    return (code if isinstance(code, str) and code else None), str(message)
+
+
+def classify_status(
+    status: int, detail: str, error_code: str | None = None
+) -> CartesiaError | None:
+    """Map a status, error body and error code onto a typed error, or None."""
     if status < 400:
         return None
+    if error_code in ERROR_CODES_QUOTA:
+        return CartesiaQuotaError(f"Cartesia is out of credits: {detail}")
+    if error_code in ERROR_CODES_RETRYABLE:
+        return CartesiaConnectionError(f"Cartesia is busy ({error_code}): {detail}")
     if status == 402:
         return CartesiaQuotaError(f"Cartesia is out of credits: {detail}")
     if status in (401, 403):
@@ -538,10 +568,16 @@ class CartesiaClient:
                 case "error":
                     detail = payload.get("message") or payload.get("title") or "unknown"
                     status = payload.get("status_code") or 400
+                    error_code = payload.get("error_code") or None
                     _LOGGER.error(
-                        "Cartesia stream error (status %s): %s", status, detail
+                        "Cartesia stream error (status %s, error_code=%s): %s",
+                        status,
+                        error_code,
+                        detail,
                     )
-                    raise classify_status(status, detail) or CartesiaError(detail)
+                    raise classify_status(status, detail, error_code) or CartesiaError(
+                        detail
+                    )
                 case _:
                     # timestamps / flush_done and friends are not used here.
                     continue
@@ -615,12 +651,19 @@ class CartesiaClient:
         """Translate an HTTP error into a typed Cartesia exception."""
         if response.status < 400:
             return
-        detail = (await response.text())[:300]
-        # Logged here rather than only raised: Cartesia does not document its
-        # error codes, so the real status and body are what makes a report
-        # actionable.
-        _LOGGER.error("Cartesia %s returned HTTP %s: %s", path, response.status, detail)
-        if (error := classify_status(response.status, detail)) is not None:
+        # Parsed before truncating, so a long body cannot break the JSON.
+        error_code, message = parse_error_body(await response.text())
+        detail = message[:300]
+        # Logged here rather than only raised: Cartesia documents the error code
+        # but not the status that goes with it, so both belong in a report.
+        _LOGGER.error(
+            "Cartesia %s returned HTTP %s (error_code=%s): %s",
+            path,
+            response.status,
+            error_code,
+            detail,
+        )
+        if (error := classify_status(response.status, detail, error_code)) is not None:
             raise error
 
 

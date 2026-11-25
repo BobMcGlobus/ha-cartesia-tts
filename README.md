@@ -30,7 +30,20 @@ selectable in the dropdown.
 
 ## Installation
 
-### HACS (recommended)
+### Marketplace (Home Assistant 2026.11 and newer)
+
+Home Assistant 2026.11 replaced HACS with the built-in Marketplace under **Settings → Marketplace**.
+The integration has been submitted to the Marketplace catalog; until it is listed there, add it
+from its link:
+
+1. **Settings → Marketplace → Add from link**
+2. Repository: `https://github.com/BobMcGlobus/ha-cartesia-tts`
+3. Download **Cartesia Sonic TTS**, then restart Home Assistant
+4. **Settings → Devices & Services → Add Integration → Cartesia Sonic TTS**
+
+Custom repositories need the Marketplace's read-only GitHub connection.
+
+### HACS (Home Assistant 2026.10 and older)
 
 1. HACS → **⋮** → **Custom repositories**
 2. Repository: `https://github.com/BobMcGlobus/ha-cartesia-tts`, category: **Integration**

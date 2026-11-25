@@ -740,3 +740,79 @@ def test_normal_requests_keep_using_the_normal_key() -> None:
         CartesiaClient(session, "sk_car_normal", admin_key="sk_car_admin").list_voices()
     )
     assert session.calls[0][3]["Authorization"] == "Bearer sk_car_normal"
+
+
+# ------------------------------------------------------- documented codes ---
+@pytest.mark.parametrize(
+    ("status", "error_code", "expected"),
+    [
+        # The code wins over the status, whatever status Cartesia pairs it with.
+        (400, "quota_exceeded", CartesiaQuotaError),
+        (403, "quota_exceeded", CartesiaQuotaError),
+        (429, "quota_exceeded", CartesiaQuotaError),
+        (429, "concurrency_limited", CartesiaConnectionError),
+        # Unknown or absent codes fall back to the status rules.
+        (401, None, CartesiaAuthError),
+        (404, "voice_not_found", CartesiaError),
+        (400, "some_future_code", CartesiaError),
+    ],
+)
+def test_error_code_takes_precedence(
+    status: int, error_code: str | None, expected: type[Exception]
+) -> None:
+    assert type(api.classify_status(status, "detail", error_code)) is expected
+
+
+def test_parse_error_body_reads_the_documented_shape() -> None:
+    body = json.dumps(
+        {
+            "error_code": "quota_exceeded",
+            "title": "Quota exceeded",
+            "message": "The account has exceeded quota.",
+            "request_id": "req_123",
+        }
+    )
+    assert api.parse_error_body(body) == (
+        "quota_exceeded",
+        "The account has exceeded quota.",
+    )
+
+
+@pytest.mark.parametrize(
+    "raw",
+    ["plain text from an old API version", "[1, 2]", '{"error_code": null}', ""],
+)
+def test_parse_error_body_tolerates_other_shapes(raw: str) -> None:
+    code, _message = api.parse_error_body(raw)
+    assert code is None
+
+
+def test_rest_quota_body_raises_quota_error_on_any_status() -> None:
+    """A 400 carrying quota_exceeded must not read as a generic bad request."""
+
+    class JsonErrorResponse(FakeResponse):
+        async def text(self) -> str:
+            return json.dumps(
+                {"error_code": "quota_exceeded", "message": "Out of credits"}
+            )
+
+    session = FakeSession([JsonErrorResponse(400)])
+    with pytest.raises(CartesiaQuotaError):
+        run(CartesiaClient(session, "k").list_voices())
+
+
+def test_stream_error_frame_with_quota_code() -> None:
+    with pytest.raises(CartesiaQuotaError):
+        _collect(
+            [
+                _frame(
+                    {
+                        "type": "error",
+                        "context_id": "ctx",
+                        "status_code": 400,
+                        "error_code": "quota_exceeded",
+                        "message": "Out of credits",
+                    }
+                )
+            ]
+        )
