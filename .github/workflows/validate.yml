@@ -72,3 +72,41 @@ jobs:
           python-version: "3.14"
       - run: pip install -r requirements-test.txt
       - run: pytest tests -q
+
+  homeassistant-latest:
+    name: Import against latest Home Assistant
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      # pytest-homeassistant-custom-component trails Home Assistant releases
+      # and pins an older core, so the full suite cannot run against a new
+      # release right away. Importing every module against the newest release
+      # catches removed or renamed symbols in the meantime.
+      - run: pip install homeassistant mutagen ha-ffmpeg
+      - name: Import the integration
+        run: |
+          python - <<'PY'
+          import importlib
+
+          from homeassistant.const import __version__
+          from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
+
+          print("Home Assistant", __version__)
+          for module in ("", ".api", ".config_flow", ".const", ".sensor", ".tts", ".usage"):
+              importlib.import_module(f"custom_components.cartesia_tts{module}")
+              print("imported", f"custom_components.cartesia_tts{module}")
+
+          # DeviceInfo became a dataclass in 2026.11 and rejects unknown keyword
+          # arguments; build it exactly the way tts.py and sensor.py do.
+          DeviceInfo(
+              identifiers={("cartesia_tts", "entry")},
+              manufacturer="Cartesia",
+              model="sonic-3.6",
+              name="Cartesia",
+              entry_type=DeviceEntryType.SERVICE,
+          )
+          print("DeviceInfo ok")
+          PY
